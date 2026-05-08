@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&family=Tajawal:wght@200;300;400;500;700;800;900&family=Almarai:wght@300;400;700;800&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+  --font-cairo: "Cairo", sans-serif;
+  --font-tajawal: "Tajawal", sans-serif;
+  --font-almarai: "Almarai", sans-serif;
+  --font-amiri: "Amiri", serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f9fafb;
+}
+
+@utility icon-glow {
+  filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.4));
+}
+
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: #cbd5e1;
+  }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
+}
+
+@utility icon-glow {
+  filter: drop-shadow(0 0 5px rgba(99, 102, 241, 0.4));
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+.theme-bg {
+  background-color: var(--primary-theme) !important;
+}
+
+.theme-text {
+  color: var(--primary-theme) !important;
+}
+
+.theme-border {
+  border-color: var(--primary-theme) !important;
+}
+
+.theme-bg-soft {
+  background-color: var(--primary-theme-soft) !important;
+}
+
+.theme-border-soft {
+  border-color: var(--primary-theme-soft) !important;
+}
+
+.theme-shadow {
+  box-shadow: 0 20px 25px -5px var(--primary-theme-hover) !important;
+}

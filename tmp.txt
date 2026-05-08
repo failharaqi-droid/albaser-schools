@@ -1,0 +1,19 @@
+69:  const [selectedStudentForProfile, setSelectedStudentForProfile] = useState<Student | null>(null);
+153:    if (!selectedStudentForProfile) return null;
+156:    const studentPayments = payments.filter(p => p.studentId === selectedStudentForProfile.id);
+158:    const remainingAmount = selectedStudentForProfile.totalAmount - paidAmount;
+161:    const studentAttendance = attendance.filter(r => r.entityId === selectedStudentForProfile.id && r.type === 'student');
+183:  }, [selectedStudentForProfile]);
+322:      if (selectedStudentForProfile?.id === id) {
+741:        {selectedStudentForProfile && studentProfileData && (
+760:                    {selectedStudentForProfile.photo ? (
+761:                      <img src={selectedStudentForProfile.photo} alt={selectedStudentForProfile.name} className="w-full h-full object-cover p-1" />
+767:                    <h3 className="text-xl font-black">{selectedStudentForProfile.name}</h3>
+769:                      {selectedStudentForProfile.grade}
+777:                    <p className="text-sm font-black text-gray-200">{selectedStudentForProfile.parentName || 'غير مسجل'}</p>
+783:                      {WhatsAppService.formatPhone(selectedStudentForProfile.phone)}
+788:                    <p className="text-sm font-black text-gray-200">{selectedStudentForProfile.dob || 'غير مسجل'}</p>
+797:                        startEdit(selectedStudentForProfile);
+931:                    onClick={() => sendPaymentReminder(selectedStudentForProfile)}
+939:                      const stId = selectedStudentForProfile.id;
+949:                    onClick={() => setDeletingStudent(selectedStudentForProfile)}
