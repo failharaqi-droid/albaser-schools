@@ -62,8 +62,7 @@ import ToastContainer from './components/Toast';
 import InvestorManager from './components/InvestorManager';
 import AccountManager from './components/AccountManager';
 import UserGuide from './components/UserGuide';
-import SetupWizard from './components/SetupWizard';
-import { auth, signInWithGoogle, logout } from './lib/firebase';
+import { auth, signInWithGoogle, logout, loginWithEmail, registerWithEmail } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { localDb } from './services/localDb';
 import { WhatsAppService } from './services/WhatsAppService';
@@ -103,8 +102,6 @@ export default function App() {
       setNavHistory(['dashboard']);
     }
   };
-
-  const [showSetup, setShowSetup] = useState(false);
 
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(() => {
     return localStorage.getItem('selectedSchoolId') || null;
@@ -212,6 +209,33 @@ export default function App() {
   const [scannerStatus, setScannerStatus] = useState<'connected' | 'disconnected'>('connected');
 
   const [authError, setAuthError] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    if (!authEmail || !authPassword) {
+      setAuthError('يرجى إدخال البريد الإلكتروني وكلمة المرور');
+      return;
+    }
+    try {
+      if (authMode === 'login') {
+        await loginWithEmail(authEmail, authPassword);
+      } else {
+        await registerWithEmail(authEmail, authPassword);
+      }
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+         setAuthError('البريد الإلكتروني مسجل مسبقاً، يرجى تسجيل الدخول');
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+         setAuthError('بيانات الدخول غير صحيحة');
+      } else {
+         setAuthError('حدث خطأ: ' + error.message);
+      }
+    }
+  };
 
   // School Creation & Settings
   const [showAddSchool, setShowAddSchool] = useState(false);
@@ -283,13 +307,6 @@ export default function App() {
     };
     setUser(u);
     
-    localDb.init().then(() => {
-      setDbLoaded(true);
-      setIsAuthReady(true);
-    });
-  }, []);
-
-  useEffect(() => {
     const handleUpdate = () => {
       setSchools(localDb.getAll('schools'));
       setStudents(localDb.getAll('students'));
@@ -311,6 +328,13 @@ export default function App() {
     };
 
     window.addEventListener('local-db-update', handleUpdate);
+    
+    localDb.init().then(() => {
+      handleUpdate(); // ensure we get the initial state even if event missed
+      setDbLoaded(true);
+      setIsAuthReady(true);
+    });
+
     return () => window.removeEventListener('local-db-update', handleUpdate);
   }, []);
 
@@ -627,14 +651,6 @@ export default function App() {
     }
   }, [selectedSchool?.systemFontFamily, selectedSchool?.systemFontSize]);
 
-  const handleSetupComplete = (schoolData: Omit<School, 'id'>) => {
-    const newSchool = localDb.add('schools', schoolData) as School;
-    // Notify about update
-    window.dispatchEvent(new Event('local-db-update'));
-    setSelectedSchoolId(newSchool.id);
-    setShowSetup(false);
-  };
-
   useEffect(() => {
     if (selectedSchool && !selectedSchoolId) {
       setSelectedSchoolId(selectedSchool.id);
@@ -707,30 +723,11 @@ export default function App() {
     }
   };
 
-  const installDatabase = async () => {
-    try {
-      const res = await fetch('/api/install', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        alert(data.message);
-        setDbStatus('online');
-      } else {
-        alert("خطأ: يرجى إضافة الإعدادات.\n\n" + data.error);
-      }
-    } catch (err: any) {
-      alert('خطأ في الاتصال.');
-    }
-  };
-
   if (!isAuthReady || !dbLoaded) return (
     <div className="w-screen h-screen flex items-center justify-center bg-slate-50">
       <div className="animate-spin w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full"></div>
     </div>
   );
-
-  if (schools.length === 0 || showSetup) {
-    return <SetupWizard onComplete={handleSetupComplete} currentUserId={user?.id || 'guest'} />;
-  }
 
   if (!user) {
     return (
@@ -751,8 +748,73 @@ export default function App() {
           </div>
 
           <div className="space-y-6 relative z-10">
-            <div className="text-center mb-4">
-              <span className="text-sm font-black text-slate-400 uppercase tracking-widest">يرجى تسجيل الدخول للمتابعة</span>
+            <div className="flex gap-2 p-1 bg-gray-50 rounded-2xl mb-6">
+              <button
+                type="button"
+                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${authMode === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                onClick={() => { setAuthMode('register'); setAuthError(''); }}
+              >
+                إنشاء حساب جديد
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${authMode === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                onClick={() => { setAuthMode('login'); setAuthError(''); }}
+              >
+                تسجيل الدخول
+              </button>
+            </div>
+
+            <form onSubmit={handleEmailAuth} className="space-y-4">
+              <div>
+                <label className="block text-sm font-black text-slate-700 mb-2">البريد الإلكتروني</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-3 pl-4 pr-12 focus:ring-2 focus:ring-[#7f1d1d] focus:border-transparent transition-all outline-none"
+                    placeholder="example@school.com"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-slate-700 mb-2">كلمة المرور</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-3 pl-4 pr-12 focus:ring-2 focus:ring-[#7f1d1d] focus:border-transparent transition-all outline-none"
+                    placeholder="••••••••"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full theme-bg text-white py-4 rounded-2xl font-black text-lg hover:opacity-90 transition-all shadow-md active:scale-95"
+              >
+                {authMode === 'register' ? 'تسجيل كمدير مدرسة' : 'تسجيل الدخول'}
+              </button>
+            </form>
+
+            <div className="relative py-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-white px-4 text-sm font-bold text-gray-400">أو</span>
+              </div>
             </div>
 
             <button
@@ -760,18 +822,18 @@ export default function App() {
               className="w-full bg-white border-2 border-gray-100 text-gray-700 py-4 rounded-2xl font-black text-lg hover:bg-gray-50 transition-all flex items-center justify-center gap-3 shadow-sm active:scale-95"
             >
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-              الدخول بواسطة جوجل
+              المتابعة باستخدام جوجل
             </button>
 
             {authError && (
               <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center gap-2 animate-shake">
-                <AlertCircle className="w-5 h-5" />
-                {authError}
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <span>{authError}</span>
               </div>
             )}
             
-            <p className="text-center text-[10px] font-bold text-gray-400 px-4">
-              بالدخول للنظام، أنت توافق على تخزين بيانات مدرستك بشكل سحابي آمن وتلقائي
+            <p className="text-center text-[11px] font-bold text-gray-400 px-4 mt-6 leading-relaxed">
+              بالتسجيل في النظام، أنت توافق على تخزين بيانات مدرستك وسجلاتها بشكل سحابي آمن وتلقائي
             </p>
           </div>
 
@@ -1057,16 +1119,6 @@ export default function App() {
               >
                 <Database className="w-3 h-3" />
                 {dbStatus === 'online' ? 'سحابي متصل (Hostinger)' : dbStatus === 'offline' ? 'غير متصل (بيانات محلية)' : 'جاري الفحص...'}
-                
-                {dbStatus === 'offline' && (
-                  <div className="absolute top-full right-0 mt-2 w-72 p-3 bg-white border border-red-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-slate-600 font-normal normal-case text-right leading-relaxed block" onClick={(e) => e.stopPropagation()}>
-                    <p className="font-bold text-red-600 mb-1">بيانات Hostinger غير مفعلة</p>
-                    <p className="text-[11px] mb-2 leading-relaxed">النظام يعمل الآن على المتصفح الخاص بك. لتثبيت الداتا بيس على استضافة Hostinger، انقر الزر أدناه.</p>
-                    <button onClick={installDatabase} className="w-full bg-red-600 text-white rounded-md py-2 text-xs font-bold hover:bg-red-700 transition-colors shadow-sm">
-                      تثبيت قاعدة البيانات (Quick Install)
-                    </button>
-                  </div>
-                )}
               </div>
 
               <div className="flex items-center gap-3">

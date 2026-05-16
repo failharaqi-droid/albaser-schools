@@ -32,47 +32,14 @@ async function startServer() {
     } else {
       console.log("No MySQL connection configuration found. Running in offline/local mode.");
     }
-  } catch (error) {
-    console.error("MySQL Connection Error:", error);
+  } catch (error: any) {
+    console.log(`MySQL Connection Info (Running offline): ${error.message}`);
     dbStatus = "offline";
   }
 
   // Health check API
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", mode: dbStatus });
-  });
-
-  // Example API route to initialize database schema (Quick Install)
-  app.post("/api/install", async (req, res) => {
-    if (!pool) {
-      return res.status(400).json({ error: "Database not configured. Set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME." });
-    }
-    try {
-      const connection = await pool.getConnection();
-      
-      // Basic schema creation
-      const schema = `
-        CREATE TABLE IF NOT EXISTS users (
-          id VARCHAR(255) PRIMARY KEY,
-          username VARCHAR(255) NOT NULL,
-          role VARCHAR(50) DEFAULT 'admin',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        -- Add more tables here as needed
-      `;
-      
-      // Simple split by ';' for multiple statements
-      const statements = schema.split(';').filter(stmt => stmt.trim() !== '');
-      for (const stmt of statements) {
-        await connection.query(stmt);
-      }
-      
-      connection.release();
-      res.json({ success: true, message: "Database tables created successfully on Hostinger!" });
-    } catch (error: any) {
-      console.error("Install error:", error);
-      res.status(500).json({ error: error.message });
-    }
   });
 
   // Vite middleware for development
