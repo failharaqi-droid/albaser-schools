@@ -62,6 +62,7 @@ import ToastContainer from './components/Toast';
 import InvestorManager from './components/InvestorManager';
 import AccountManager from './components/AccountManager';
 import UserGuide from './components/UserGuide';
+import DbSetupModal from './components/DbSetupModal';
 import { auth, signInWithGoogle, logout, loginWithEmail, registerWithEmail } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { localDb } from './services/localDb';
@@ -192,7 +193,18 @@ export default function App() {
 
   const [dbLoaded, setDbLoaded] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking' | 'not_configured'>('checking');
+  
+  const checkDb = () => {
+     fetch('/api/health')
+      .then(r => r.json())
+      .then(data => setDbStatus(data.mode))
+      .catch(() => setDbStatus('offline'));
+  };
+
+  useEffect(() => {
+    checkDb();
+  }, []);
   
   // Remaining states
 
@@ -220,20 +232,38 @@ export default function App() {
       setAuthError('يرجى إدخال البريد الإلكتروني وكلمة المرور');
       return;
     }
-    try {
-      if (authMode === 'login') {
-        await loginWithEmail(authEmail, authPassword);
+    
+    // Local mock auth
+    if (authMode === 'login') {
+      const savedUser = localStorage.getItem('mock_user_email');
+      const savedPass = localStorage.getItem('mock_user_pass');
+      if (savedUser === authEmail && savedPass === authPassword) {
+        setUser({
+          id: 'user_123',
+          username: authEmail.split('@')[0],
+          email: authEmail,
+          role: 'admin',
+          permissions: ['all'],
+          canModify: true,
+          createdAt: new Date().toISOString()
+        });
+        setIsAuthReady(true);
       } else {
-        await registerWithEmail(authEmail, authPassword);
+        setAuthError('كلمة المرور أو البريد الإلكتروني غير صحيح.');
       }
-    } catch (error: any) {
-      if (error.code === 'auth/email-already-in-use') {
-         setAuthError('البريد الإلكتروني مسجل مسبقاً، يرجى تسجيل الدخول');
-      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-         setAuthError('بيانات الدخول غير صحيحة');
-      } else {
-         setAuthError('حدث خطأ: ' + error.message);
-      }
+    } else {
+      localStorage.setItem('mock_user_email', authEmail);
+      localStorage.setItem('mock_user_pass', authPassword);
+      setUser({
+        id: 'user_123',
+        username: authEmail.split('@')[0],
+        email: authEmail,
+        role: 'admin',
+        permissions: ['all'],
+        canModify: true,
+        createdAt: new Date().toISOString()
+      });
+      setIsAuthReady(true);
     }
   };
 
@@ -291,22 +321,22 @@ export default function App() {
   }, [showEditSchool, selectedSchool]);
 
   useEffect(() => {
-    fetch('/api/health')
-      .then(r => r.json())
-      .then(data => setDbStatus(data.mode === 'online' ? 'online' : 'offline'))
-      .catch(() => setDbStatus('offline'));
+    const savedUserEmail = localStorage.getItem('mock_user_email');
+    if (savedUserEmail) {
+       setUser({
+          id: 'user_local',
+          username: savedUserEmail.split('@')[0],
+          email: savedUserEmail,
+          role: 'admin',
+          permissions: GUEST_USER.permissions,
+          canModify: true,
+          createdAt: new Date().toISOString()
+       });
+    } else {
+       setUser(null);
+    }
+    setIsAuthReady(true);
 
-    // Set a default mock/local user or keep it null
-    const u: User = {
-      id: 'local_admin',
-      username: 'مدير النظام (محلي)',
-      role: 'admin',
-      permissions: GUEST_USER.permissions,
-      canModify: true,
-      createdAt: new Date().toISOString()
-    };
-    setUser(u);
-    
     const handleUpdate = () => {
       setSchools(localDb.getAll('schools'));
       setStudents(localDb.getAll('students'));
@@ -324,7 +354,6 @@ export default function App() {
       setWhatsAppTemplates(localDb.getAll('whatsAppTemplates'));
       setInvestorPayments(localDb.getAll('investorPayments'));
       setHolidays(localDb.getAll('holidays'));
-      setIsAuthReady(true);
     };
 
     window.addEventListener('local-db-update', handleUpdate);
@@ -332,10 +361,11 @@ export default function App() {
     localDb.init().then(() => {
       handleUpdate(); // ensure we get the initial state even if event missed
       setDbLoaded(true);
-      setIsAuthReady(true);
     });
 
-    return () => window.removeEventListener('local-db-update', handleUpdate);
+    return () => {
+      window.removeEventListener('local-db-update', handleUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -661,7 +691,17 @@ export default function App() {
     if (e) e.preventDefault();
     setAuthError('');
     try {
-      await signInWithGoogle();
+      const gUser = await signInWithGoogle();
+      setUser({
+        id: gUser.uid,
+        username: gUser.displayName || 'مدير النظام',
+        email: gUser.email,
+        role: 'admin',
+        permissions: GUEST_USER.permissions,
+        canModify: true,
+        createdAt: new Date().toISOString()
+      });
+      setIsAuthReady(true);
     } catch (error) {
       setAuthError('فشل تسجيل الدخول: ' + (error as Error).message);
     }
@@ -669,6 +709,8 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      localStorage.removeItem('mock_user_email');
+      localStorage.removeItem('mock_user_pass');
       await logout();
       setUser(null);
     } catch (error) {
@@ -728,6 +770,10 @@ export default function App() {
       <div className="animate-spin w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full"></div>
     </div>
   );
+
+  if (dbStatus === 'not_configured') {
+    return <DbSetupModal onSuccess={() => { checkDb(); window.location.reload(); }} />;
+  }
 
   if (!user) {
     return (
@@ -1109,18 +1155,6 @@ export default function App() {
                 </button>
               )}
               
-              <div 
-                className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black border uppercase tracking-wider transition-all shadow-sm cursor-help" 
-                style={{ 
-                  borderColor: dbStatus === 'online' ? '#10b981' : dbStatus === 'offline' ? '#ef4444' : '#e2e8f0',
-                  backgroundColor: dbStatus === 'online' ? '#ecfdf5' : dbStatus === 'offline' ? '#fef2f2' : '#f8fafc',
-                  color: dbStatus === 'online' ? '#059669' : dbStatus === 'offline' ? '#dc2626' : '#94a3b8'
-                }}
-              >
-                <Database className="w-3 h-3" />
-                {dbStatus === 'online' ? 'سحابي متصل (Hostinger)' : dbStatus === 'offline' ? 'غير متصل (بيانات محلية)' : 'جاري الفحص...'}
-              </div>
-
               <div className="flex items-center gap-3">
                 <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3 tracking-tight">
                   {allItems.find(i => i.id === activeTab)?.icon && (

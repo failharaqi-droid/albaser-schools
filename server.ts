@@ -4,42 +4,103 @@ import { createServer as createViteServer } from "vite";
 import mysql from "mysql2/promise";
 import fs from "fs";
 
+const app = express();
+const PORT = 3000;
+
+app.use(express.json({ limit: "50mb" }));
+
+const CONFIG_FILE = path.join(process.cwd(), "hostinger-config.json");
+
+let pool: mysql.Pool | null = null;
+let dbStatus = "not_configured";
+
+async function connectToDb(config: any) {
+  const newPool = mysql.createPool({
+    host: config.host,
+    user: config.user,
+    password: config.password,
+    database: config.database,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  });
+
+  // Test connection
+  await newPool.getConnection();
+  
+  // Create table if not exists
+  await newPool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      store_key VARCHAR(255) PRIMARY KEY,
+      store_value LONGTEXT
+    )
+  `);
+
+  pool = newPool;
+  dbStatus = "online";
+  console.log("Connected to MySQL database on Hostinger!");
+}
+
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
-
-  app.use(express.json());
-
-  // Database connection pool
-  let pool: mysql.Pool | null = null;
-  let dbStatus = "offline";
-
-  try {
-    if (process.env.DB_HOST && process.env.DB_USER) {
-      pool = mysql.createPool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD || "",
-        database: process.env.DB_NAME || "school_db",
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0
-      });
-      // Test connection
-      await pool.getConnection();
-      dbStatus = "online";
-      console.log("Connected to MySQL database on Hostinger!");
-    } else {
-      console.log("No MySQL connection configuration found. Running in offline/local mode.");
+  // Try loading config
+  if (fs.existsSync(CONFIG_FILE)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+      await connectToDb(config);
+    } catch (e: any) {
+      console.log(`Failed to connect to configured DB: ${e.message}`);
+      dbStatus = "error";
     }
-  } catch (error: any) {
-    console.log(`MySQL Connection Info (Running offline): ${error.message}`);
-    dbStatus = "offline";
   }
 
-  // Health check API
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", mode: dbStatus });
+  });
+
+  app.get("/api/db/status", (req, res) => {
+    res.json({ status: dbStatus });
+  });
+
+  app.post("/api/db/setup", async (req, res) => {
+    const { host, user, password, database } = req.body;
+    try {
+      await connectToDb({ host, user, password, database });
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify({ host, user, password, database }), "utf-8");
+      res.json({ success: true });
+    } catch (e: any) {
+      dbStatus = "error";
+      res.status(400).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/db/sync", async (req, res) => {
+    if (!pool) return res.status(400).json({ error: "not_configured" });
+    try {
+      const [rows]: any = await pool.query(`SELECT store_key, store_value FROM app_state WHERE store_key = 'main_db'`);
+      if (rows.length > 0) {
+        res.json({ data: JSON.parse(rows[0].store_value) });
+      } else {
+        res.json({ data: null });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/db/sync", async (req, res) => {
+    if (!pool) return res.status(400).json({ error: "not_configured" });
+    try {
+      const dbData = req.body;
+      const strData = JSON.stringify(dbData);
+      await pool.query(`
+        INSERT INTO app_state (store_key, store_value) 
+        VALUES ('main_db', ?) 
+        ON DUPLICATE KEY UPDATE store_value = ?
+      `, [strData, strData]);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Vite middleware for development

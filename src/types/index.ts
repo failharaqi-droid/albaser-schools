@@ -3,9 +3,10 @@ export type Tab = 'dashboard' | 'students' | 'attendance' | 'payments' | 'add-st
 export interface User {
   id: string;
   username: string;
+  email?: string;
   password?: string;
   role: 'admin' | 'staff';
-  permissions: Tab[]; // List of allowed tabs
+  permissions: (Tab | 'all')[]; // List of allowed tabs
   canModify: boolean; // Permission to add/edit/delete
   createdAt: string;
 }

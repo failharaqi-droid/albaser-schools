@@ -48,32 +48,45 @@ const initialDB: DB = {
   holidays: []
 };
 
-function loadFromCache(): DB {
+let memoryDB: DB = { ...initialDB };
+
+// Debounce sync logic to avoid spamming the DB on every character typed
+let syncTimeout: any = null;
+
+async function saveToRemote() {
   try {
-    const cached = localStorage.getItem('school_accounting_local_db');
-    if (cached) {
-      return { ...initialDB, ...JSON.parse(cached) };
+    const res = await fetch('/api/db/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memoryDB)
+    });
+    if (!res.ok) {
+        console.error("Failed to sync DB to server.");
     }
-  } catch (e) {
-    console.error("Failed to load local DB", e);
-  }
-  return { ...initialDB };
-}
-
-function saveToCache(data: DB) {
-  try {
-    localStorage.setItem('school_accounting_local_db', JSON.stringify(data));
-  } catch (e) {
-    console.error("Failed to save local DB", e);
+  } catch (error) {
+    console.error("Error saving DB:", error);
   }
 }
 
-let memoryDB: DB = loadFromCache();
+function scheduleSync() {
+   if (syncTimeout) clearTimeout(syncTimeout);
+   syncTimeout = setTimeout(saveToRemote, 1000);
+}
 
 export const localDb = {
   async init() {
+    try {
+      const res = await fetch('/api/db/sync');
+      if (res.ok) {
+        const { data } = await res.json();
+        if (data) {
+           memoryDB = { ...initialDB, ...data };
+        }
+      }
+    } catch(e) {
+      console.error(e);
+    }
     window.dispatchEvent(new Event('local-db-update'));
-    return Promise.resolve();
   },
 
   get(): DB {
@@ -82,7 +95,7 @@ export const localDb = {
 
   save(data: DB) {
     memoryDB = data;
-    saveToCache(memoryDB);
+    scheduleSync();
     window.dispatchEvent(new Event('local-db-update'));
   },
 
@@ -99,7 +112,7 @@ export const localDb = {
     const newItem = { ...item, id };
     
     memoryDB[key] = [...(memoryDB[key] as any), newItem] as any;
-    saveToCache(memoryDB);
+    scheduleSync();
     window.dispatchEvent(new Event('local-db-update'));
     
     return newItem;
@@ -112,7 +125,7 @@ export const localDb = {
     }));
     
     memoryDB[key] = [...(memoryDB[key] as any), ...newItems] as any;
-    saveToCache(memoryDB);
+    scheduleSync();
     window.dispatchEvent(new Event('local-db-update'));
     
     return newItems;
@@ -125,14 +138,14 @@ export const localDb = {
       const updatedItem = { ...collectionArr[index], ...updates };
       collectionArr[index] = updatedItem;
       memoryDB[key] = collectionArr as any;
-      saveToCache(memoryDB);
+      scheduleSync();
       window.dispatchEvent(new Event('local-db-update'));
     }
   },
 
   delete<K extends keyof DB>(key: K, id: string) {
     memoryDB[key] = (memoryDB[key] as any[]).filter((i: any) => i.id !== id) as any;
-    saveToCache(memoryDB);
+    scheduleSync();
     window.dispatchEvent(new Event('local-db-update'));
   },
 
@@ -155,7 +168,7 @@ export const localDb = {
     });
 
     memoryDB[key] = collectionArr as any;
-    saveToCache(memoryDB);
+    scheduleSync();
     window.dispatchEvent(new Event('local-db-update'));
   },
 
@@ -168,7 +181,7 @@ export const localDb = {
       const data = JSON.parse(json);
       if (data && typeof data === 'object' && 'schools' in data) {
         memoryDB = { ...initialDB, ...data };
-        saveToCache(memoryDB);
+        scheduleSync();
         window.dispatchEvent(new Event('local-db-update'));
       }
     } catch (e) {}
