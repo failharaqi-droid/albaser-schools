@@ -48,8 +48,6 @@ export default function AccountManager() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [confirmingAuthToggle, setConfirmingAuthToggle] = useState<boolean | null>(null);
-  const [isAuthEnabled, setIsAuthEnabled] = useState(localStorage.getItem('isAuthEnabled') === 'true');
   
   const [formData, setFormData] = useState({
     username: '',
@@ -58,17 +56,6 @@ export default function AccountManager() {
     permissions: ['dashboard'] as Tab[],
     canModify: false
   });
-
-  const toggleAuthMode = () => {
-    setConfirmingAuthToggle(!isAuthEnabled);
-  };
-  
-  const confirmToggleAuthMode = () => {
-    if (confirmingAuthToggle === null) return;
-    setIsAuthEnabled(confirmingAuthToggle);
-    localStorage.setItem('isAuthEnabled', confirmingAuthToggle.toString());
-    window.location.reload();
-  };
 
   useEffect(() => {
     setUsers(authService.getAllUsers());
@@ -160,21 +147,6 @@ export default function AccountManager() {
           <h2 className="text-lg font-black text-slate-900 tracking-tight text-slate-900 mb-2">إدارة حسابات النظام</h2>
           <p className="text-slate-500 font-bold">تحكم في صلاحيات الوصول والعمليات لكل مستخدم</p>
         </div>
-        
-        <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
-          <div className="px-4 text-right">
-            <p className="text-xs font-black text-slate-900 leading-none mb-1">وضع الحماية</p>
-            <p className={`text-[10px] font-bold ${isAuthEnabled ? 'text-emerald-600' : 'text-slate-400'}`}>
-              {isAuthEnabled ? 'نظام تسجيل الدخول مفعل' : 'وضع الضيف (دخول مباشر)'}
-            </p>
-          </div>
-          <button
-            onClick={toggleAuthMode}
-            className={`w-14 h-8 rounded-full relative transition-all duration-300 ${isAuthEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
-          >
-            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all duration-300 shadow-sm ${isAuthEnabled ? 'right-7' : 'right-1'}`}></div>
-          </button>
-        </div>
 
         <button
           onClick={() => setShowAddModal(true)}
@@ -206,7 +178,7 @@ export default function AccountManager() {
                 </div>
               </div>
               <div className="flex gap-2">
-                {u.username !== 'failh' && (
+                {u.username !== 'Failh' && (
                   <>
                     <button
                       onClick={() => setEditingUser(u)}
@@ -222,7 +194,7 @@ export default function AccountManager() {
                     </button>
                   </>
                 )}
-                {u.username === 'failh' && (
+                {u.username === 'Failh' && (
                   <div className="p-2.5 text-emerald-500 bg-emerald-50 rounded-xl flex items-center gap-1">
                     <ShieldCheck className="w-4 h-4" />
                     <span className="text-[10px] font-black">مدير ثابت</span>
@@ -511,39 +483,6 @@ export default function AccountManager() {
         )}
       
       {/* Modals for Accounts */}
-      {confirmingAuthToggle !== null && (
-        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 text-center space-y-6">
-              <div className={`w-24 h-24 rounded-full mx-auto flex items-center justify-center mb-6 ${confirmingAuthToggle ? 'bg-amber-50 text-amber-500' : 'bg-emerald-50 text-emerald-500'}`}>
-                {confirmingAuthToggle ? <ShieldCheck className="w-12 h-12" /> : <Key className="w-12 h-12" />}
-              </div>
-              <h3 className="text-3xl font-black text-slate-900 tracking-tight">تأكيد الإجراء</h3>
-              <p className="text-lg text-slate-500 font-bold leading-relaxed">
-                {confirmingAuthToggle 
-                  ? 'سوف يتم تفعيل نظام تسجيل الدخول. هل تريد المتابعة؟ (يرجى التأكد من وجود حساب مدير نظام لتجنب قفل الدخول)' 
-                  : 'سوف يتم إلغاء نظام الحماية والدخول المباشر كمدير نظام بدون كلمة مرور. هل أنت متأكد؟'}
-              </p>
-              
-              <div className="flex flex-col gap-3 pt-4">
-                <button 
-                  onClick={confirmToggleAuthMode}
-                  className={`w-full text-white py-4 rounded-2xl font-black text-lg active:scale-95 transition-all flex items-center justify-center gap-2 ${confirmingAuthToggle ? 'bg-amber-600 hover:bg-amber-700 shadow-xl shadow-amber-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-200'}`}
-                >
-                  نعم، تأكيد
-                </button>
-                <button 
-                  onClick={() => setConfirmingAuthToggle(null)}
-                  className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-lg hover:bg-slate-200 active:scale-95 transition-all"
-                >
-                  إلغاء الأمر
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {deletingUser && (
         <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">

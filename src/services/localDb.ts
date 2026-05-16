@@ -48,44 +48,104 @@ const initialDB: DB = {
   holidays: []
 };
 
+const STORAGE_KEY = 'smart_school_local_db';
 let memoryDB: DB = { ...initialDB };
 
-// Debounce sync logic to avoid spamming the DB on every character typed
-let syncTimeout: any = null;
+// IndexedDB Helper
+const DB_NAME = 'SmartSchoolDB';
+const STORE_NAME = 'Storage';
 
-async function saveToRemote() {
+async function getDB() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+        request.result.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idbGet(key: string): Promise<string | null> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get(key);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idbSet(key: string, val: string): Promise<void> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.put(val, key);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Debounce save logic
+let saveTimeout: any = null;
+
+async function saveToIndexedDB() {
   try {
-    const res = await fetch('/api/db/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(memoryDB)
-    });
-    if (!res.ok) {
-        console.error("Failed to sync DB to server.");
-    }
+    const dataStr = JSON.stringify(memoryDB);
+    await idbSet(STORAGE_KEY, dataStr);
   } catch (error) {
-    console.error("Error saving DB:", error);
+    console.error("Error saving DB to IndexedDB:", error);
   }
 }
 
-function scheduleSync() {
-   if (syncTimeout) clearTimeout(syncTimeout);
-   syncTimeout = setTimeout(saveToRemote, 1000);
+function scheduleSave() {
+   if (saveTimeout) clearTimeout(saveTimeout);
+   saveTimeout = setTimeout(saveToIndexedDB, 500);
 }
 
 export const localDb = {
   async init() {
     try {
-      const res = await fetch('/api/db/sync');
-      if (res.ok) {
-        const { data } = await res.json();
+      // Migrate from localStorage to IndexedDB if needed
+      let dataStr = null;
+      try {
+         dataStr = await idbGet(STORAGE_KEY);
+      } catch(e) {}
+      
+      if (!dataStr) {
+         // Fallback to localstorage for migration
+         dataStr = localStorage.getItem(STORAGE_KEY);
+      }
+
+      if (dataStr) {
+        const data = JSON.parse(dataStr);
         if (data) {
            memoryDB = { ...initialDB, ...data };
         }
       }
     } catch(e) {
-      console.error(e);
+      console.error('Failed to parse local DB', e);
     }
+    
+    // Seed default admin if no users exist
+    if (!memoryDB.users || memoryDB.users.length === 0) {
+      memoryDB.users = [{
+        id: 'user_master_admin',
+        username: 'Failh',
+        email: 'admin@admin.com',
+        password: 'Ff71295343',
+        role: 'admin',
+        permissions: ['all'],
+        canModify: true,
+        createdAt: new Date().toISOString()
+      }];
+      scheduleSave();
+    }
+    
     window.dispatchEvent(new Event('local-db-update'));
   },
 
@@ -95,7 +155,7 @@ export const localDb = {
 
   save(data: DB) {
     memoryDB = data;
-    scheduleSync();
+    scheduleSave();
     window.dispatchEvent(new Event('local-db-update'));
   },
 
@@ -112,7 +172,7 @@ export const localDb = {
     const newItem = { ...item, id };
     
     memoryDB[key] = [...(memoryDB[key] as any), newItem] as any;
-    scheduleSync();
+    scheduleSave();
     window.dispatchEvent(new Event('local-db-update'));
     
     return newItem;
@@ -125,7 +185,7 @@ export const localDb = {
     }));
     
     memoryDB[key] = [...(memoryDB[key] as any), ...newItems] as any;
-    scheduleSync();
+    scheduleSave();
     window.dispatchEvent(new Event('local-db-update'));
     
     return newItems;
@@ -138,14 +198,14 @@ export const localDb = {
       const updatedItem = { ...collectionArr[index], ...updates };
       collectionArr[index] = updatedItem;
       memoryDB[key] = collectionArr as any;
-      scheduleSync();
+      scheduleSave();
       window.dispatchEvent(new Event('local-db-update'));
     }
   },
 
   delete<K extends keyof DB>(key: K, id: string) {
     memoryDB[key] = (memoryDB[key] as any[]).filter((i: any) => i.id !== id) as any;
-    scheduleSync();
+    scheduleSave();
     window.dispatchEvent(new Event('local-db-update'));
   },
 
@@ -168,7 +228,7 @@ export const localDb = {
     });
 
     memoryDB[key] = collectionArr as any;
-    scheduleSync();
+    scheduleSave();
     window.dispatchEvent(new Event('local-db-update'));
   },
 
@@ -181,10 +241,11 @@ export const localDb = {
       const data = JSON.parse(json);
       if (data && typeof data === 'object' && 'schools' in data) {
         memoryDB = { ...initialDB, ...data };
-        scheduleSync();
+        scheduleSave();
         window.dispatchEvent(new Event('local-db-update'));
       }
     } catch (e) {}
   }
 };
+
 

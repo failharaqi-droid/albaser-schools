@@ -7,7 +7,7 @@ const ALL_TABS: Tab[] = ['dashboard', 'students', 'attendance', 'payments', 'add
 
 const SUPER_ADMIN: User = {
   id: 'super-admin-failh',
-  username: 'failh',
+  username: 'Failh',
   password: 'Ff71295343',
   role: 'admin',
   permissions: ALL_TABS,

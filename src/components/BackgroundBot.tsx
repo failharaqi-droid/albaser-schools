@@ -28,6 +28,12 @@ export default function BackgroundBot() {
       if (!school.autoAbsenceCheckEnabled || !school.shiftEndTime) continue;
       if (school.lastAbsenceCheckDate === today) continue;
       
+      if (school.academicYearStart && school.academicYearEnd) {
+        if (today < school.academicYearStart || today > school.academicYearEnd) {
+          continue; // Outside academic year
+        }
+      }
+
       const isHoliday = holidays.some(h => h.schoolId === school.id && h.date === today);
       if (isHoliday) continue;
 
@@ -36,9 +42,17 @@ export default function BackgroundBot() {
       if (isAfter(now, shiftEnd)) {
         console.log(`Processing absences for ${school.name}...`);
         
+        const allAttendance = localDb.getAll('attendanceRecords') as AttendanceRecord[];
+        const todayAttendance = allAttendance.filter(r => r.date === today);
+        
+        // اذا لم يتم تسجيل اي حضور اليوم (النظام غير نشط)، نعتبره عطلة
+        if (todayAttendance.length === 0) {
+           console.log(`Skipping auto-absence for ${school.name}: System inactive today (no attendance records).`);
+           continue;
+        }
+
         const schoolStudents = (localDb.getAll('students') as Student[]).filter(s => s.schoolId === school.id);
-        const attendance = (localDb.getAll('attendanceRecords') as AttendanceRecord[]).filter(r => r.date === today);
-        const presentIds = new Set(attendance.filter(r => (r.status === 'present' || r.status === 'late' || r.status === 'excused')).map(r => r.entityId));
+        const presentIds = new Set(todayAttendance.filter(r => (r.status === 'present' || r.status === 'late' || r.status === 'excused')).map(r => r.entityId));
 
         const newRecords: any[] = [];
         const newNotifications: any[] = [];
@@ -47,7 +61,7 @@ export default function BackgroundBot() {
 
         for (const student of schoolStudents) {
           if (!presentIds.has(student.id)) {
-            const alreadyMarked = attendance.find(r => r.entityId === student.id && r.status === 'absent');
+            const alreadyMarked = todayAttendance.find(r => r.entityId === student.id && r.status === 'absent');
             if (!alreadyMarked) {
               newRecords.push({
                 entityId: student.id,

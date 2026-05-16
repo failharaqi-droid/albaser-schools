@@ -53,7 +53,73 @@ async function startServer() {
     }
   }
 
+  // Unified route for /api.php to simulate the PHP environment!
+  app.all("/api.php", async (req, res) => {
+    const action = req.query.action;
+    
+    if (action === "health") {
+      res.json({ status: "ok", mode: dbStatus });
+      return;
+    }
+    
+    if (action === "status") {
+      res.json({ status: dbStatus });
+      return;
+    }
+
+    if (action === "setup" && req.method === "POST") {
+      const { host, user, password, database } = req.body;
+      try {
+        await connectToDb({ host, user, password, database });
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify({ host, user, password, database }), "utf-8");
+        res.json({ success: true });
+      } catch (e: any) {
+        dbStatus = "error";
+        res.status(400).json({ success: false, error: e.message });
+      }
+      return;
+    }
+
+    if (action === "sync") {
+      if (!pool) return res.status(400).json({ error: "not_configured" });
+
+      if (req.method === "GET") {
+        try {
+          const [rows]: any = await pool.query(`SELECT store_key, store_value FROM app_state WHERE store_key = 'main_db'`);
+          if (rows.length > 0) {
+            res.json({ data: JSON.parse(rows[0].store_value) });
+          } else {
+            res.json({ data: null });
+          }
+        } catch (e: any) {
+          res.status(500).json({ error: e.message });
+        }
+        return;
+      }
+
+      if (req.method === "POST") {
+        try {
+          const dbData = req.body;
+          const strData = JSON.stringify(dbData);
+          await pool.query(`
+            INSERT INTO app_state (store_key, store_value) 
+            VALUES ('main_db', ?) 
+            ON DUPLICATE KEY UPDATE store_value = ?
+          `, [strData, strData]);
+          res.json({ success: true });
+        } catch (e: any) {
+          res.status(500).json({ error: e.message });
+        }
+        return;
+      }
+    }
+    
+    res.status(404).json({ error: "Action not found" });
+  });
+
+  // Legacy express routes for backward compatibility
   app.get("/api/health", (req, res) => {
+
     res.json({ status: "ok", mode: dbStatus });
   });
 

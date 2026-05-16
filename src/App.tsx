@@ -62,10 +62,10 @@ import ToastContainer from './components/Toast';
 import InvestorManager from './components/InvestorManager';
 import AccountManager from './components/AccountManager';
 import UserGuide from './components/UserGuide';
-import DbSetupModal from './components/DbSetupModal';
 import { auth, signInWithGoogle, logout, loginWithEmail, registerWithEmail } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { localDb } from './services/localDb';
+import { authService } from './services/authService';
 import { WhatsAppService } from './services/WhatsAppService';
 
 export default function App() {
@@ -104,17 +104,7 @@ export default function App() {
     }
   };
 
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(() => {
-    return localStorage.getItem('selectedSchoolId') || null;
-  });
-
-  useEffect(() => {
-    if (selectedSchoolId) {
-      localStorage.setItem('selectedSchoolId', selectedSchoolId);
-    } else {
-      localStorage.removeItem('selectedSchoolId');
-    }
-  }, [selectedSchoolId]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
 
   const [preSelectedStudentId, setPreSelectedStudentId] = useState<string | null>(null);
   const [activePaymentStudent, setActivePaymentStudent] = useState<Student | null>(null);
@@ -191,20 +181,9 @@ export default function App() {
 
   const allItems = useMemo(() => menuGroups.flatMap(g => g.items), [menuGroups]);
 
-  const [dbLoaded, setDbLoaded] = useState(false);
+  const [dbLoaded, setDbLoaded] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking' | 'not_configured'>('checking');
-  
-  const checkDb = () => {
-     fetch('/api/health')
-      .then(r => r.json())
-      .then(data => setDbStatus(data.mode))
-      .catch(() => setDbStatus('offline'));
-  };
-
-  useEffect(() => {
-    checkDb();
-  }, []);
+  const [dbStatus, setDbStatus] = useState<'online'>('online');
   
   // Remaining states
 
@@ -221,49 +200,24 @@ export default function App() {
   const [scannerStatus, setScannerStatus] = useState<'connected' | 'disconnected'>('connected');
 
   const [authError, setAuthError] = useState('');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
-  const [authEmail, setAuthEmail] = useState('');
+  const [authMode, setAuthMode] = useState<'login'>('login');
+  const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
-    if (!authEmail || !authPassword) {
-      setAuthError('يرجى إدخال البريد الإلكتروني وكلمة المرور');
+    if (!authUsername || !authPassword) {
+      setAuthError('يرجى إدخال اسم المستخدم وكلمة المرور');
       return;
     }
     
-    // Local mock auth
-    if (authMode === 'login') {
-      const savedUser = localStorage.getItem('mock_user_email');
-      const savedPass = localStorage.getItem('mock_user_pass');
-      if (savedUser === authEmail && savedPass === authPassword) {
-        setUser({
-          id: 'user_123',
-          username: authEmail.split('@')[0],
-          email: authEmail,
-          role: 'admin',
-          permissions: ['all'],
-          canModify: true,
-          createdAt: new Date().toISOString()
-        });
-        setIsAuthReady(true);
-      } else {
-        setAuthError('كلمة المرور أو البريد الإلكتروني غير صحيح.');
-      }
-    } else {
-      localStorage.setItem('mock_user_email', authEmail);
-      localStorage.setItem('mock_user_pass', authPassword);
-      setUser({
-        id: 'user_123',
-        username: authEmail.split('@')[0],
-        email: authEmail,
-        role: 'admin',
-        permissions: ['all'],
-        canModify: true,
-        createdAt: new Date().toISOString()
-      });
+    try {
+      const user = authService.login(authUsername, authPassword);
+      setUser(user);
       setIsAuthReady(true);
+    } catch (e: any) {
+      setAuthError(e.message);
     }
   };
 
@@ -304,6 +258,8 @@ export default function App() {
         receiptNote: selectedSchool.receiptNote || '',
         shiftStartTime: selectedSchool.shiftStartTime || '08:00',
         shiftEndTime: selectedSchool.shiftEndTime || '14:00',
+        academicYearStart: selectedSchool.academicYearStart || '',
+        academicYearEnd: selectedSchool.academicYearEnd || '',
         autoAbsenceCheckEnabled: selectedSchool.autoAbsenceCheckEnabled || false,
         autoPrintReceipt: selectedSchool.autoPrintReceipt ?? true,
         themeColor: selectedSchool.themeColor || '#7f1d1d',
@@ -321,17 +277,9 @@ export default function App() {
   }, [showEditSchool, selectedSchool]);
 
   useEffect(() => {
-    const savedUserEmail = localStorage.getItem('mock_user_email');
-    if (savedUserEmail) {
-       setUser({
-          id: 'user_local',
-          username: savedUserEmail.split('@')[0],
-          email: savedUserEmail,
-          role: 'admin',
-          permissions: GUEST_USER.permissions,
-          canModify: true,
-          createdAt: new Date().toISOString()
-       });
+    const savedUser = authService.getCurrentUser();
+    if (savedUser) {
+       setUser(savedUser);
     } else {
        setUser(null);
     }
@@ -369,8 +317,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user && user.permissions && !user.permissions.includes(activeTab)) {
-      setActiveTab(user.permissions[0] || 'dashboard');
+    if (user && user.permissions && !user.permissions.includes('all') && !user.permissions.includes(activeTab)) {
+      const firstValidTab = user.permissions.find(p => p !== 'all') as Tab | undefined;
+      setActiveTab(firstValidTab || 'dashboard');
     }
   }, [user, activeTab]);
 
@@ -586,7 +535,9 @@ export default function App() {
       
       // If it's for installments or generic (payment mode)
       if (studentInstallmentMatch || (studentGenericMatch && activeTab !== 'attendance')) {
-        setActivePaymentStudent(student);
+        setActivePaymentStudent(null);
+        setPreSelectedStudentId(student.id);
+        handleNavigate('payments');
         setIsGlobalScanning(false);
         setGlobalScanFeedback({ name: student.name, status: 'payment', time: timeStr, grade: student.grade });
       }
@@ -709,9 +660,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      localStorage.removeItem('mock_user_email');
-      localStorage.removeItem('mock_user_pass');
-      await logout();
+      authService.logout();
       setUser(null);
     } catch (error) {
       console.error("Logout failed", error);
@@ -738,6 +687,8 @@ export default function App() {
       receiptNote: editSchoolData.receiptNote,
       shiftStartTime: editSchoolData.shiftStartTime,
       shiftEndTime: editSchoolData.shiftEndTime,
+      academicYearStart: editSchoolData.academicYearStart,
+      academicYearEnd: editSchoolData.academicYearEnd,
       autoAbsenceCheckEnabled: editSchoolData.autoAbsenceCheckEnabled,
       autoPrintReceipt: editSchoolData.autoPrintReceipt,
       themeColor: editSchoolData.themeColor,
@@ -771,10 +722,6 @@ export default function App() {
     </div>
   );
 
-  if (dbStatus === 'not_configured') {
-    return <DbSetupModal onSuccess={() => { checkDb(); window.location.reload(); }} />;
-  }
-
   if (!user) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4 font-cairo" dir="rtl" style={{ 
@@ -794,36 +741,21 @@ export default function App() {
           </div>
 
           <div className="space-y-6 relative z-10">
-            <div className="flex gap-2 p-1 bg-gray-50 rounded-2xl mb-6">
-              <button
-                type="button"
-                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${authMode === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
-                onClick={() => { setAuthMode('register'); setAuthError(''); }}
-              >
-                إنشاء حساب جديد
-              </button>
-              <button
-                type="button"
-                className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${authMode === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
-                onClick={() => { setAuthMode('login'); setAuthError(''); }}
-              >
-                تسجيل الدخول
-              </button>
-            </div>
+            <h2 className="text-2xl font-black text-center text-slate-800 mb-6 tracking-tight">الدخول للنظام</h2>
 
-            <form onSubmit={handleEmailAuth} className="space-y-4">
+            <form onSubmit={handleAuth} className="space-y-4">
               <div>
-                <label className="block text-sm font-black text-slate-700 mb-2">البريد الإلكتروني</label>
+                <label className="block text-sm font-black text-slate-700 mb-2">اسم المستخدم</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
                     <UserPlus className="w-5 h-5" />
                   </div>
                   <input
-                    type="email"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
+                    type="text"
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-3 pl-4 pr-12 focus:ring-2 focus:ring-[#7f1d1d] focus:border-transparent transition-all outline-none"
-                    placeholder="example@school.com"
+                    placeholder="اسم المستخدم"
                     dir="ltr"
                   />
                 </div>
@@ -850,11 +782,11 @@ export default function App() {
                 type="submit"
                 className="w-full theme-bg text-white py-4 rounded-2xl font-black text-lg hover:opacity-90 transition-all shadow-md active:scale-95"
               >
-                {authMode === 'register' ? 'تسجيل كمدير مدرسة' : 'تسجيل الدخول'}
+                تسجيل الدخول
               </button>
             </form>
 
-            <div className="relative py-4">
+            <div className="relative py-4 hidden">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-200"></div>
               </div>
@@ -865,7 +797,7 @@ export default function App() {
 
             <button
               onClick={() => handleLogin()}
-              className="w-full bg-white border-2 border-gray-100 text-gray-700 py-4 rounded-2xl font-black text-lg hover:bg-gray-50 transition-all flex items-center justify-center gap-3 shadow-sm active:scale-95"
+              className="w-full bg-white border-2 border-gray-100 text-gray-700 py-4 rounded-2xl font-black text-lg hover:bg-gray-50 transition-all items-center justify-center gap-3 shadow-sm active:scale-95 hidden"
             >
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
               المتابعة باستخدام جوجل
@@ -1613,6 +1545,27 @@ export default function App() {
                                 value={editSchoolData.shiftEndTime}
                                 onChange={(e) => setEditSchoolData(prev => ({ ...prev, shiftEndTime: e.target.value }))}
                                 className="w-full bg-white border border-slate-100 rounded-2xl px-3 py-1.5 min-h-[38px] outline-none font-black text-lg text-slate-700 shadow-sm text-center"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-3 mt-4">
+                            <div className="text-center">
+                              <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">بداية العام الدراسي</label>
+                              <input
+                                type="date"
+                                value={editSchoolData.academicYearStart}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, academicYearStart: e.target.value }))}
+                                className="w-full bg-white border border-slate-100 rounded-2xl px-3 py-1.5 min-h-[38px] outline-none font-black text-sm text-slate-700 shadow-sm text-center"
+                              />
+                            </div>
+                            <div className="text-center">
+                              <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">نهاية العام الدراسي</label>
+                              <input
+                                type="date"
+                                value={editSchoolData.academicYearEnd}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, academicYearEnd: e.target.value }))}
+                                className="w-full bg-white border border-slate-100 rounded-2xl px-3 py-1.5 min-h-[38px] outline-none font-black text-sm text-slate-700 shadow-sm text-center"
                               />
                             </div>
                           </div>

@@ -42,6 +42,8 @@ export interface School {
   installmentBarcodeEnabled?: boolean;
   shiftStartTime?: string; // HH:mm format
   shiftEndTime?: string; // HH:mm format
+  academicYearStart?: string;
+  academicYearEnd?: string;
   autoAbsenceCheckEnabled?: boolean;
   lastAbsenceCheckDate?: string; // YYYY-MM-DD
   themeColor?: string;

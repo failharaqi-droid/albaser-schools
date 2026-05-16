@@ -30,29 +30,17 @@ export default function LedgerManager({
 }: LedgerManagerProps) {
   const [viewMode, setViewMode] = useState<'automated' | 'manual'>('automated');
   const [showAutoConfig, setShowAutoConfig] = useState(false);
-  const [autoConfig, setAutoConfig] = useState(() => {
-    const saved = localStorage.getItem('financeLedgerAutoConfig');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        // Fallback to default
-      }
-    }
-    return {
-      showPaidAmount: true,
-      showPhone: true,
-      showTotalAmount: true,
-      numPaymentSlots: 8,
-      showStaff: true,
-      showExpenses: true,
-      fontSize: 'text-sm'
-    };
+  const [autoConfig, setAutoConfig] = useState({
+    showPaidAmount: true,
+    showPhone: true,
+    showTotalAmount: true,
+    numPaymentSlots: 8,
+    showStaff: true,
+    showExpenses: true,
+    fontSize: 'text-sm'
   });
 
-  useEffect(() => {
-    localStorage.setItem('financeLedgerAutoConfig', JSON.stringify(autoConfig));
-  }, [autoConfig]);
+  // Removed localStorage sync
 
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ 

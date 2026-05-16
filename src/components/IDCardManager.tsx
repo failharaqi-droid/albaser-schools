@@ -12,11 +12,17 @@ import {
   Search,
   LayoutGrid,
   X,
-  Plus
+  Plus,
+  Archive,
+  Loader2
 } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import Barcode from 'react-barcode';
 import { QRCodeSVG } from 'qrcode.react';
+import { toJpeg } from 'html-to-image';
+import { jsPDF } from 'jspdf';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 function IDCardThumbnail({ item, settings, school, type }: { item: any, settings: any, school: School, type: 'student' | 'staff' }) {
   return (
@@ -79,9 +85,9 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [printMode, setPrintMode] = useState<'both' | 'front' | 'back'>('both');
+  const [printMode, setPrintMode] = useState<'both' | 'front' | 'back' | 'sideBySide'>('both');
   const [paperSize, setPaperSize] = useState<'A4' | 'A3'>('A4');
-  const [cardsPerPage, setCardsPerPage] = useState<4 | 6 | 8 | 10 | 12>(8);
+  const [cardsPerPage, setCardsPerPage] = useState<4 | 6 | 8 | 10 | 12>(10);
   const [viewMode, setViewMode] = useState<'design' | 'a4'>('design');
   
   const [cardSettings, setCardSettings] = useState({
@@ -121,7 +127,7 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
     return `
       @page {
         size: ${paperSize};
-        margin: 5mm;
+        margin: 0;
       }
       @media print {
         body {
@@ -134,12 +140,12 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
         .print-page {
           width: ${pageWidth};
           min-height: ${pageHeight};
-          padding: 10mm;
+          padding: 5mm 10mm;
           margin: 0 auto;
           display: grid;
           grid-template-columns: repeat(2, 85.6mm);
           grid-auto-rows: 53.98mm;
-          gap: 4mm 2mm;
+          gap: 4mm 4mm;
           justify-content: center;
           align-content: start;
           page-break-after: always;
@@ -165,6 +171,59 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
     contentRef: printRef,
     pageStyle: getPageStyle() 
   });
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportZIP = async () => {
+    setIsExporting(true);
+    try {
+      const zip = new JSZip();
+      const pdf = new jsPDF({
+        orientation: paperSize === 'A4' ? 'portrait' : 'landscape',
+        unit: 'mm',
+        format: paperSize === 'A4' ? 'a4' : 'a3'
+      });
+
+      if (!printRef.current) return;
+      
+      const clone = printRef.current.cloneNode(true) as HTMLElement;
+      clone.style.position = 'absolute';
+      clone.style.left = '-9999px';
+      clone.style.top = '0';
+      clone.style.display = 'block';
+      clone.style.width = paperSize === 'A4' ? '210mm' : '297mm'; 
+      document.body.appendChild(clone);
+
+      const clonePages = clone.querySelectorAll('.print-page');
+
+      for (let i = 0; i < clonePages.length; i++) {
+        const page = clonePages[i] as HTMLElement;
+        const imgData = await toJpeg(page, { quality: 0.95, pixelRatio: 3 });
+        
+        if (i > 0) pdf.addPage();
+        
+        // Ensure image fits accurately
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+      }
+
+      document.body.removeChild(clone);
+
+      const pdfBlob = pdf.output('blob');
+      
+      zip.file(`ID_Cards_${school.name}.pdf`, pdfBlob);
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      saveAs(zipBlob, `ID_Cards_${school.name}.rar`); // user requested rar, zip libraries can output files with .rar extension
+
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء التصدير');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const filteredStudents = useMemo(() => {
     return students.filter(s => 
@@ -208,11 +267,12 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
         return 0;
       });
     const chunks = [];
-    for (let i = 0; i < sortedList.length; i += cardsPerPage) {
-      chunks.push(sortedList.slice(i, i + cardsPerPage));
+    const step = printMode === 'sideBySide' ? Math.max(1, Math.floor(cardsPerPage / 2)) : cardsPerPage;
+    for (let i = 0; i < sortedList.length; i += step) {
+      chunks.push(sortedList.slice(i, i + step));
     }
     return chunks;
-  }, [selectedItemsList, cardsPerPage, activeCategory]);
+  }, [selectedItemsList, cardsPerPage, activeCategory, printMode]);
 
   const saveSettings = () => {
     localDb.update('schools', school.id, {
@@ -408,8 +468,8 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
         </div>
 
         {/* Content Area - Clean and Professional with requested instructions */}
-        <div className="flex-1 px-8 py-3 flex flex-col justify-center gap-3">
-           <div className="space-y-1.5">
+        <div className="flex-1 px-6 py-2 flex flex-col gap-2 relative z-30">
+           <div className="space-y-1.5 flex-1 mt-2">
               {[
                 "1- احضار البطاقة يومياً للدخول والخروج وتسجيل الحضور",
                 "2- دفع القسط السريع عن طريق البطاقة",
@@ -417,41 +477,49 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
               ].map((text, i) => (
                 <div key={i} className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: cardSettings.primaryColor }}></div>
-                  <p className="text-[9px] font-black text-gray-800 leading-tight italic">{text}</p>
+                  <p className="text-[9px] font-bold text-gray-800 leading-tight">{text}</p>
                 </div>
               ))}
+              
+              {cardSettings.showCustomText && cardSettings.customText && (
+                <div className="mt-2.5 p-2 bg-white/70 border-r-[3px] rounded-sm text-right shadow-sm" style={{ borderColor: cardSettings.primaryColor }}>
+                   <p className="text-[8px] font-bold text-gray-700 leading-relaxed whitespace-pre-wrap">
+                     {cardSettings.customText}
+                   </p>
+                </div>
+              )}
            </div>
 
-           {cardSettings.showCustomText && cardSettings.customText && (
-             <div className="mt-1 p-3 bg-gray-50/50 border-r-[3px] border-[#800000] rounded-sm">
-                <p className="text-[9px] font-black text-[#800000] leading-relaxed">
-                  {cardSettings.customText}
-                </p>
-             </div>
+           {cardSettings.showBarcode && (
+              <div className="flex flex-col items-center justify-center self-center w-full max-w-[65mm] mt-auto">
+                 <div className="bg-white/90 backdrop-blur-md border border-gray-200/60 px-4 py-1.5 rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.06)] w-full flex flex-col items-center mb-1 relative overflow-hidden">
+                   <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: cardSettings.primaryColor, opacity: 0.8 }}></div>
+                   
+                   <div className="scale-x-[1.4] origin-center h-7 flex items-center overflow-hidden mix-blend-multiply opacity-90 mt-1">
+                     <Barcode value={item?.installmentBarcode || item?.barcode || '0000'} height={28} width={1} displayValue={false} margin={0} background="transparent" lineColor="#000000" />
+                   </div>
+                   
+                   <div className="flex items-center justify-between w-full mt-1.5 px-1">
+                     <p className="text-gray-900 font-mono text-[10px] font-bold tracking-[3px]">
+                       {item?.installmentBarcode || item?.barcode || '0000'}
+                     </p>
+                     <span className="text-[6.5px] font-black text-white px-2 py-0.5 rounded-md uppercase tracking-wider" style={{ backgroundColor: cardSettings.primaryColor }}>
+                        قسط سريع
+                     </span>
+                   </div>
+                 </div>
+              </div>
            )}
         </div>
 
-        {/* Footer - Centered Barcode Section */}
-        <div className="px-8 pb-5 mt-auto flex flex-col items-center">
-          {cardSettings.showBarcode && (
-             <div className="flex flex-col items-center bg-white border border-gray-100 px-6 py-2 rounded-xl shadow-sm mb-3">
-                <div className="scale-x-[1.6] scale-y-[0.9] origin-center h-6 flex items-center overflow-hidden">
-                  <Barcode value={item?.installmentBarcode || item?.barcode || '0000'} height={30} width={1} displayValue={false} margin={0} background="transparent" />
-                </div>
-                <p className="text-gray-900 font-mono text-[9px] font-bold tracking-[5px] mt-1.5 italic">
-                  {item?.installmentBarcode || item?.barcode || '0000'}
-                </p>
-                <span className="text-[6px] font-black text-[#800000] mt-1 uppercase opacity-60">باركود الدفع السريع</span>
-             </div>
-          )}
-
-          <div className="w-full border-t border-gray-100 pt-3 flex justify-between items-center text-[7.5px] font-black text-gray-400">
-             <div className="flex gap-3">
-                <span>البصرة - العراق</span>
-                <span className="opacity-50">|</span>
-                <span>© {new Date().getFullYear()}</span>
-             </div>
-          </div>
+        {/* Footer */}
+        <div className="px-6 pb-2 w-full flex justify-between items-center text-[7px] font-black text-gray-500 relative z-40">
+           <div className="w-full border-t border-gray-300/50 pt-1.5 flex justify-between items-center">
+              <div className="flex gap-2">
+                 <span>البصرة - العراق</span>
+              </div>
+              <span className="tracking-widest opacity-60">© {new Date().getFullYear()}</span>
+           </div>
         </div>
       </div>
     </div>
@@ -472,8 +540,9 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
             <button onClick={() => setActiveCategory('staff')} className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeCategory === 'staff' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>الكادر</button>
           </div>
 
-          <div className="flex bg-gray-100 p-1 rounded-2xl">
+          <div className="flex bg-gray-100 p-1 rounded-2xl flex-wrap justify-center overflow-hidden">
             <button onClick={() => setPrintMode('both')} className={`px-4 py-2 rounded-xl font-black text-sm transition-all ${printMode === 'both' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>الوجه والظهر</button>
+            <button onClick={() => setPrintMode('sideBySide')} className={`px-4 py-2 rounded-xl font-black text-sm transition-all ${printMode === 'sideBySide' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>وجه وظهر (نفس الورقة)</button>
             <button onClick={() => setPrintMode('front')} className={`px-4 py-2 rounded-xl font-black text-sm transition-all ${printMode === 'front' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>الوجه فقط</button>
             <button onClick={() => setPrintMode('back')} className={`px-4 py-2 rounded-xl font-black text-sm transition-all ${printMode === 'back' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>الظهر فقط</button>
           </div>
@@ -498,6 +567,15 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
             تخصيص القالب
           </button>
           
+          <button
+            onClick={() => handleExportZIP()}
+            disabled={selectedItemsList.length === 0 || isExporting}
+            className="bg-purple-600 text-white px-8 py-3 rounded-2xl font-black flex items-center gap-2 hover:bg-purple-700 shadow-xl shadow-purple-100 transition-all disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Archive className="w-5 h-5" />}
+            تصدير RAR ({selectedItemsList.length})
+          </button>
+
           <button
             onClick={() => handlePrint()}
             disabled={selectedItemsList.length === 0}
@@ -582,18 +660,18 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
               {viewMode === 'design' ? (
                 <>
                   {/* Front Preview */}
-                  <div className="perspective-1000 mb-[40px]">
+                  <div className="perspective-1000 mb-[80px]">
                     <div 
-                      className="w-[85.6mm] h-[53.98mm] mx-auto shadow-2xl overflow-hidden relative border border-gray-200 bg-white scale-[1.5] origin-top rounded-xl"
+                      className="w-[85.6mm] h-[53.98mm] mx-auto shadow-2xl overflow-hidden relative border border-gray-200 bg-white scale-[1.8] origin-top rounded-xl"
                     >
                       {renderFrontCard(selectedItemsList[0])}
                     </div>
                   </div>
 
                   {/* Back Preview */}
-                  <div className="perspective-1000 mt-[70px] mb-[40px]">
+                  <div className="perspective-1000 mt-[120px] mb-[80px]">
                     <div 
-                      className="w-[85.6mm] h-[53.98mm] mx-auto shadow-2xl overflow-hidden relative border border-gray-200 bg-white scale-[1.5] origin-top rounded-xl"
+                      className="w-[85.6mm] h-[53.98mm] mx-auto shadow-2xl overflow-hidden relative border border-gray-200 bg-white scale-[1.8] origin-top rounded-xl"
                     >
                       {renderBackCard(selectedItemsList[0])}
                     </div>
@@ -602,21 +680,98 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
               ) : (
                 <>
                   {/* Layout Preview */}
-                  <div className="bg-gray-200 p-5 rounded-2xl shadow-inner overflow-auto max-h-[800px] custom-scrollbar flex justify-center">
-                  <div 
-                    className="bg-white shadow-2xl p-[8mm] origin-top scale-[0.6] origin-top-center mb-[-120mm]" 
-                    style={{ width: paperSize === 'A4' ? '210mm' : '297mm', minHeight: paperSize === 'A4' ? '297mm' : '420mm' }}
-                    dir="rtl"
-                  >
-                    <div className="grid grid-cols-2 justify-center gap-x-[2mm] gap-y-[4mm] self-start" style={{ gridAutoRows: '53.98mm' }}>
-                      {selectedItemsList.slice(0, cardsPerPage).map((item, idx) => (
-                        <div key={idx} className="w-[85.6mm] h-[53.98mm] border-[0.1mm] border-gray-200 rounded-lg overflow-hidden relative break-inside-avoid bg-white">
-                          {renderFrontCard(item)}
+                  <div className="bg-gray-200 py-8 px-4 rounded-2xl shadow-inner overflow-auto custom-scrollbar flex flex-col justify-start items-center h-[800px] gap-20">
+                    {(printMode === 'both' || printMode === 'front') && (
+                      <div className="relative shrink-0 flex flex-col items-center">
+                        <span className="bg-blue-600 text-white font-black px-4 py-1.5 rounded-full text-xs shadow-lg mb-4 absolute -top-4 z-10">الوجه الأمامي</span>
+                        <div 
+                          className="bg-white shadow-2xl origin-top" 
+                          style={{ 
+                            width: paperSize === 'A4' ? '210mm' : '297mm', 
+                            minHeight: paperSize === 'A4' ? '297mm' : '420mm',
+                            padding: '5mm 10mm',
+                            transform: 'scale(0.8)'
+                          }}
+                          dir="rtl"
+                        >
+                          <div className="grid grid-cols-2 justify-center gap-x-[4mm] gap-y-[4mm] self-start" style={{ gridAutoRows: '53.98mm' }}>
+                            {selectedItemsList.slice(0, cardsPerPage).map((item, idx) => (
+                              <div key={idx} className="w-[85.6mm] h-[53.98mm] border-[0.1mm] border-gray-200 rounded-lg overflow-hidden relative break-inside-avoid bg-white">
+                                {renderFrontCard(item)}
+                              </div>
+                          ))}
+                          </div>
                         </div>
-                    ))}
-                    </div>
+                      </div>
+                    )}
+
+                    {(printMode === 'both' || printMode === 'back') && (
+                      <div className="relative shrink-0 flex flex-col items-center pb-20">
+                        <span className="bg-[#800000] text-white font-black px-4 py-1.5 rounded-full text-xs shadow-lg mb-4 absolute -top-4 z-10">الظهر</span>
+                        <div 
+                          className="bg-white shadow-2xl origin-top" 
+                          style={{ 
+                            width: paperSize === 'A4' ? '210mm' : '297mm', 
+                            minHeight: paperSize === 'A4' ? '297mm' : '420mm',
+                            padding: '5mm 10mm',
+                            transform: 'scale(0.8)'
+                          }}
+                          dir="rtl"
+                        >
+                          <div className="grid grid-cols-2 justify-center gap-x-[4mm] gap-y-[4mm] self-start" style={{ gridAutoRows: '53.98mm' }}>
+                            {(() => {
+                                const chunk = selectedItemsList.slice(0, cardsPerPage);
+                                const swappedChunk = [];
+                                for (let i = 0; i < chunk.length; i += 2) {
+                                  if (i + 1 < chunk.length) {
+                                    swappedChunk.push(chunk[i + 1]);
+                                    swappedChunk.push(chunk[i]);
+                                  } else {
+                                    swappedChunk.push(chunk[i]);
+                                  }
+                                }
+                                return swappedChunk.map((item, idx) => (
+                                  <div key={idx} className="w-[85.6mm] h-[53.98mm] border-[0.1mm] border-gray-200 rounded-lg overflow-hidden relative break-inside-avoid bg-white">
+                                    {renderBackCard(item)}
+                                  </div>
+                                ));
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {printMode === 'sideBySide' && (
+                      <div className="relative shrink-0 flex flex-col items-center pb-20">
+                        <span className="bg-[#006400] text-white font-black px-4 py-1.5 rounded-full text-xs shadow-lg mb-4 absolute -top-4 z-10">وجه وظهر (للطي)</span>
+                        <div 
+                          className="bg-white shadow-2xl origin-top" 
+                          style={{ 
+                            width: paperSize === 'A4' ? '210mm' : '297mm', 
+                            minHeight: paperSize === 'A4' ? '297mm' : '420mm',
+                            padding: '5mm 10mm',
+                            transform: 'scale(0.8)'
+                          }}
+                          dir="rtl"
+                        >
+                          <div className="grid grid-cols-2 justify-center gap-x-[4mm] gap-y-[4mm] self-start" style={{ gridAutoRows: '53.98mm' }}>
+                            {(() => {
+                                const step = Math.max(1, Math.floor(cardsPerPage / 2));
+                                const chunk = selectedItemsList.slice(0, step);
+                                return chunk.flatMap((item, idx) => [
+                                  <div key={`front-${idx}`} className="w-[85.6mm] h-[53.98mm] border-[0.1mm] border-gray-200 rounded-lg overflow-hidden relative break-inside-avoid bg-white">
+                                    {renderFrontCard(item)}
+                                  </div>,
+                                  <div key={`back-${idx}`} className="w-[85.6mm] h-[53.98mm] border-[0.1mm] border-gray-200 rounded-lg overflow-hidden relative break-inside-avoid bg-white">
+                                    {renderBackCard(item)}
+                                  </div>
+                                ]);
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
                  <p className="text-center text-gray-500 mt-4 font-bold text-sm">عرض معاينة طباعة {paperSize} (أول {cardsPerPage} كروت)</p>
                 </>
               )}
@@ -823,6 +978,22 @@ export default function IDCardManager({ school, students, staff }: IDCardManager
                 ))}
               </div>
     );
+          })}
+
+          {/* Render Side By Side (Foldable) */}
+          {printMode === 'sideBySide' && itemChunks.map((chunk, chunkIdx) => {
+            return (
+              <div key={`sidebyside-page-${chunkIdx}`} className="print-page">
+                {chunk.flatMap((item, idx) => [
+                  <div key={`front-${item.id}`} className="print-card">
+                    {renderFrontCard(item)}
+                  </div>,
+                  <div key={`back-${item.id}`} className="print-card">
+                    {renderBackCard(item)}
+                  </div>
+                ])}
+              </div>
+            );
           })}
         </div>
       </div>
