@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "School": {
+      "title": "School",
+      "description": "School configuration and details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "logo": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "themeColor": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerId"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "name": { "type": "string" },
+        "parentName": { "type": "string" },
+        "grade": { "type": "string" },
+        "phone": { "type": "string" },
+        "barcode": { "type": "string" },
+        "totalAmount": { "type": "number" }
+      },
+      "required": ["id", "schoolId", "name"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Student payment record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "method": { "type": "string" }
+      },
+      "required": ["id", "studentId", "amount", "date"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Staff member record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "name": { "type": "string" },
+        "salary": { "type": "number" },
+        "role": { "type": "string" }
+      },
+      "required": ["id", "schoolId", "name"]
+    },
+    "AttendanceRecord": {
+      "title": "Attendance Record",
+      "description": "Attendance log for student or staff",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "entityId": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "entityId", "date", "status", "type"]
+    },
+    "GeneralExpense": {
+      "title": "General Expense",
+      "description": "School expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "schoolId", "amount", "date", "category"]
+    }
+  },
+  "firestore": {
+    "schools": {
+      "schema": "School",
+      "description": "Top-level schools"
+    },
+    "schools/{schoolId}/students": {
+      "schema": "Student",
+      "description": "Students belonging to a school"
+    },
+    "schools/{schoolId}/students/{studentId}/payments": {
+      "schema": "Payment",
+      "description": "Payments for a student"
+    },
+    "schools/{schoolId}/staff": {
+      "schema": "Staff",
+      "description": "Staff belonging to a school"
+    },
+    "schools/{schoolId}/attendance": {
+      "schema": "AttendanceRecord",
+      "description": "Attendance records for a school"
+    },
+    "schools/{schoolId}/expenses": {
+      "schema": "GeneralExpense",
+      "description": "Expenses for a school"
+    }
+  }
+}

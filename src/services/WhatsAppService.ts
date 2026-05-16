@@ -10,6 +10,7 @@ export const WhatsAppService = {
   formatMessage(template: string, student: Student, data: { [key: string]: string | number } = {}) {
     const schools = localDb.getAll('schools') as any[];
     const school = schools.find(s => s.id === student.schoolId);
+    const settings = this.getSettings(student.schoolId);
 
     let message = template
       .replace(/{name}/g, student.name)
@@ -18,7 +19,10 @@ export const WhatsAppService = {
       .replace(/{grade}/g, student.grade)
       .replace(/{barcode}/g, student.barcode)
       .replace(/{date}/g, format(new Date(), 'yyyy-MM-dd'))
-      .replace(/{time}/g, format(new Date(), 'HH:mm'));
+      .replace(/{time}/g, format(new Date(), 'HH:mm'))
+      .replace(/{academic_year}/g, school?.academicYear || 'غير محدد')
+      .replace(/{general_channel}/g, settings?.generalChannelLink || 'غير متوفر')
+      .replace(/{grade_channel}/g, settings?.gradeChannelLinks?.[student.grade] || 'غير متوفر');
 
     Object.entries(data).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -203,6 +207,7 @@ export const WhatsAppService = {
 
     const message = settings.summaryTemplate
       .replace(/{school_name}/g, school?.name || 'مدرستنا')
+      .replace(/{academic_year}/g, school?.academicYear || 'غير محدد')
       .replace(/{date}/g, format(new Date(), 'yyyy-MM-dd'))
       .replace(/{absent_list}/g, absentNames.length > 0 ? absentNames.join('\n') : 'لا يوجد غياب')
       .replace(/{violation_list}/g, violationNames.length > 0 ? violationNames.join('\n') : 'لا يوجد مخالفات');

@@ -39,17 +39,17 @@ class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4" dir="rtl">
-          <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 text-center border border-red-100">
+          <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-5 text-center border border-red-100">
             <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertCircle className="w-10 h-10 text-red-600" />
+              <AlertCircle className="w-6 h-6 text-red-600" />
             </div>
-            <h2 className="text-2xl font-black text-gray-900 mb-4">عذراً، حدث خطأ ما</h2>
+            <h2 className="text-lg font-black text-gray-900 mb-4">عذراً، حدث خطأ ما</h2>
             <p className="text-gray-600 mb-8 leading-relaxed">
               {errorMessage}
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
             >
               <RefreshCw className="w-5 h-5" />
               إعادة المحاولة

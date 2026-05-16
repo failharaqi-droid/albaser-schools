@@ -36,27 +36,14 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
   }, [onScan]);
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-gray-900/40 backdrop-blur-md"
-        />
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-white w-full max-w-lg rounded-[2.5rem] overflow-hidden shadow-2xl relative z-10"
-        >
-          <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-white">
+    <div className="integrated-page z-[300] no-scrollbar">
+      <div className="modal-content">
+          <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-white">
             <div className="flex items-center gap-3">
               <div className="bg-blue-50 p-2 rounded-xl text-blue-600">
                 <Scan className="w-5 h-5" />
               </div>
-              <h3 className="text-2xl font-black text-gray-900">مسح الباركود</h3>
+              <h3 className="text-lg font-black text-gray-900">مسح الباركود</h3>
             </div>
             <button 
               onClick={onClose}
@@ -66,7 +53,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
             </button>
           </div>
           
-          <div className="p-8">
+          <div className="p-5">
             <div className="relative">
               <div id="reader" className="rounded-3xl overflow-hidden border-2 border-dashed border-blue-100 bg-gray-50 shadow-inner"></div>
               <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-red-500/30 blur-[1px] animate-pulse"></div>
@@ -76,16 +63,16 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
             </p>
           </div>
           
-          <div className="p-8 bg-gray-50/50 border-t border-gray-100">
+          <div className="p-5 bg-gray-50/50 border-t border-gray-100">
             <button
               onClick={onClose}
-              className="w-full bg-gray-900 text-white py-5 rounded-[2rem] font-black hover:bg-gray-800 transition-all shadow-xl shadow-gray-200 active:scale-[0.98]"
+              className="w-full bg-gray-900 text-white py-5 rounded-2xl font-black hover:bg-gray-800 transition-all shadow-xl shadow-gray-200 active:scale-[0.98]"
             >
               إلغاء العملية
             </button>
           </div>
-        </motion.div>
+        </div>
       </div>
-    </AnimatePresence>
+    
   );
 }

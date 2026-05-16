@@ -1,4 +1,4 @@
-export type Tab = 'dashboard' | 'students' | 'attendance' | 'payments' | 'reports' | 'unpaid' | 'staff' | 'expenses' | 'ledger' | 'idcards' | 'backup' | 'whatsapp' | 'teachers' | 'investor' | 'accounts';
+export type Tab = 'dashboard' | 'students' | 'attendance' | 'payments' | 'add-student' | 'attendance-reports' | 'reports' | 'unpaid' | 'staff' | 'expenses' | 'ledger' | 'idcards' | 'backup' | 'whatsapp' | 'teachers' | 'investor' | 'accounts' | 'userguide' | 'manual-ledger';
 
 export interface User {
   id: string;
@@ -53,6 +53,9 @@ export interface School {
   receiptFontSize?: 'small' | 'medium' | 'large';
   showPreviousPayments?: boolean;
   authEnabled?: boolean;
+  academicYear?: string;
+  systemFontFamily?: string;
+  systemFontSize?: string;
 }
 
 export interface CardTemplate {
@@ -90,6 +93,7 @@ export interface Student {
   schoolId: string;
   name: string;
   parentName?: string;
+  address?: string;
   totalAmount: number;
   grade: string;
   phone: string;
@@ -123,6 +127,15 @@ export interface Staff {
   workingDays: number[]; // 0 for Sunday, 1 for Monday, etc. (using JS getDay() format)
   deductionAmount: number; // Deduction per day of absence
   dob?: string;
+  photo?: string;
+}
+
+export interface Holiday {
+  id: string;
+  schoolId: string;
+  date: string; // YYYY-MM-DD
+  reason?: string;
+  createdAt: string;
 }
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'dismissed' | 'violation';
@@ -135,6 +148,7 @@ export interface AttendanceRecord {
   type: 'student' | 'staff';
   scanTime?: string; // Full ISO for when it was scanned
   reason?: string; // Reason for absence or lateness
+  messageSent?: boolean; // True if an automated message was sent
   createdAt: string; 
 }
 
@@ -179,6 +193,8 @@ export interface WhatsAppSettings {
   absenceSummons10Template: string;
   absenceExpulsion12Template: string;
   messageDelay?: number; // Delay in seconds between messages
+  generalChannelLink?: string; // General school channel link
+  gradeChannelLinks?: Record<string, string>; // Grade-specific channel links
 }
 
 export interface ParentNotification {

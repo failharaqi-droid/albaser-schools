@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(schoolId) {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/schools/$(schoolId)).data.ownerId == request.auth.uid
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User-scoped global collections (migrated from localDb)
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      
+      match /{collectionName}/{docId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // Schools rules
+    match /schools/{schoolId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      // Sub-collections
+      match /students/{studentId} {
+        allow read, write: if isOwner(schoolId);
+        
+        match /payments/{paymentId} {
+          allow read, write: if isOwner(schoolId);
+        }
+      }
+
+      match /staff/{staffId} {
+        allow read, write: if isOwner(schoolId);
+      }
+
+      match /attendance/{recordId} {
+        allow read, write: if isOwner(schoolId);
+      }
+
+      match /expenses/{expenseId} {
+        allow read, write: if isOwner(schoolId);
+      }
+      
+      match /expenseCategories/{categoryId} {
+        allow read, write: if isOwner(schoolId);
+      }
+      
+      match /cardTemplates/{templateId} {
+        allow read, write: if isOwner(schoolId);
+      }
+      
+      match /manualLedgerEntries/{entryId} {
+        allow read, write: if isOwner(schoolId);
+      }
+      
+      match /manualLedgerConfig/{configId} {
+        allow read, write: if isOwner(schoolId);
+      }
+      
+      match /investorPayments/{paymentId} {
+        allow read, write: if isOwner(schoolId);
+      }
+      
+      match /whatsappSettings/{settingsId} {
+        allow read, write: if isOwner(schoolId);
+      }
+      
+      match /holidays/{holidayId} {
+        allow read, write: if isOwner(schoolId);
+      }
+    }
+  }
+}

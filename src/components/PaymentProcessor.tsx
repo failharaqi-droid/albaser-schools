@@ -140,7 +140,7 @@ export default function PaymentProcessor({
       if (res && res.mode === 'manual' && res.url) {
         window.open(res.url, '_blank');
       }
-    });
+      });
 
     setAmount('');
     setNote('');
@@ -164,9 +164,9 @@ export default function PaymentProcessor({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2 space-y-6">
-        <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+      <div className="lg:col-span-2 space-y-2">
+        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-xl font-black mb-6 flex items-center gap-2">
             <CreditCard className="theme-text" />
             معالجة دفعة جديدة
@@ -180,7 +180,7 @@ export default function PaymentProcessor({
                 placeholder="ابحث عن طالب..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-12 pl-4 py-4 outline-none font-bold focus:ring-2"
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-12 pl-4 py-2 outline-none font-bold focus:ring-2"
                 style={{ ['--tw-ring-color' as any]: 'var(--primary-theme-soft)' }}
               />
             </div>
@@ -201,17 +201,17 @@ export default function PaymentProcessor({
           )}
 
           {selectedStudent ? (
-            <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
-              <div className="theme-bg-soft p-6 rounded-3xl theme-border flex items-center justify-between">
-                <div className="flex items-center gap-4">
+            <div className="space-y-2 animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="theme-bg-soft p-4 rounded-3xl theme-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
                   <div className="relative">
                     {selectedStudent.photo ? (
-                      <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 theme-border-soft shadow-sm">
+                      <div className="w-10 h-10 rounded-2xl overflow-hidden border-2 theme-border-soft shadow-sm">
                         <img src={selectedStudent.photo} alt={selectedStudent.name} className="w-full h-full object-cover" />
                       </div>
                     ) : (
                       <div className="theme-bg p-4 rounded-2xl text-white theme-shadow">
-                        <User className="w-8 h-8" />
+                        <User className="w-6 h-6" />
                       </div>
                     )}
                     <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center ${remaining === 0 ? 'bg-emerald-500' : 'bg-red-500'}`}>
@@ -235,31 +235,29 @@ export default function PaymentProcessor({
               </div>
 
               {/* Enhanced Payment Stats */}
-              <div className="space-y-4">
-                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+              <div className="space-y-2">
+                <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
                   <div className="flex justify-between items-end mb-4">
                     <div>
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">نسبة التسديد</p>
-                      <p className="text-2xl font-black text-gray-900">
+                      <p className="text-lg font-black text-gray-900">
                         {Math.round((totalPaid / selectedStudent.totalAmount) * 100)}%
                       </p>
                     </div>
                     <div className="text-left">
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">المبلغ المتبقي</p>
-                      <p className="text-2xl font-black text-red-600">{formatCurrency(remaining)}</p>
+                      <p className="text-lg font-black text-red-600">{formatCurrency(remaining)}</p>
                     </div>
                   </div>
                   
                   {/* Progress Bar */}
                   <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(totalPaid / selectedStudent.totalAmount) * 100}%` }}
+                    <div
                       className="h-full theme-bg rounded-full shadow-sm"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 mt-6 gap-6">
+                  <div className="grid grid-cols-2 mt-6 gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-2 h-10 bg-gray-200 rounded-full" />
                       <div>
@@ -277,7 +275,7 @@ export default function PaymentProcessor({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div className="bg-blue-50/30 p-5 rounded-3xl border border-blue-100/30">
                     <div className="flex items-center gap-2 mb-2">
                       <History className="w-4 h-4 text-blue-600" />
@@ -314,8 +312,8 @@ export default function PaymentProcessor({
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <label className="block text-sm font-black text-gray-700">مغ الدفعة</label>
@@ -344,7 +342,7 @@ export default function PaymentProcessor({
                       type="number"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
-                      className="w-full bg-white border-2 border-gray-100 rounded-3xl px-6 py-5 text-2xl font-black focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-gray-200 shadow-sm"
+                      className="w-full bg-white border-2 border-gray-100 rounded-3xl px-6 py-5 text-lg font-black focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-gray-200 shadow-sm"
                       placeholder="0.00"
                     />
                   </div>
@@ -353,7 +351,7 @@ export default function PaymentProcessor({
                     <select
                       value={method}
                       onChange={(e) => setMethod(e.target.value as any)}
-                      className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-4 text-lg font-black focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                      className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-2 text-lg font-black focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                     >
                       <option value="cash">نقداً</option>
                       <option value="bank">تحويل بنكي</option>
@@ -373,15 +371,15 @@ export default function PaymentProcessor({
             </div>
           ) : (
             <div className="text-center py-12 text-gray-400">
-              <User className="w-16 h-16 mx-auto mb-4 opacity-20" />
+              <User className="w-10 h-10 mx-auto mb-4 opacity-20" />
               <p className="text-lg font-bold">يرجى البحث عن طالب للبدء</p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+      <div className="space-y-2">
+        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-xl font-black mb-6 flex items-center gap-2">
             <History className="text-blue-600" />
             آخر الدفعات
@@ -391,21 +389,14 @@ export default function PaymentProcessor({
             animate="visible"
             variants={{
               hidden: { opacity: 0 },
-              visible: { 
-                opacity: 1,
-                transition: { staggerChildren: 0.05 }
-              }
+              visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
             }}
-            className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar"
+            className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar"
           >
             {studentPayments.map(p => (
-              <motion.div 
-                key={p.id} 
-                variants={{
-                  hidden: { opacity: 0, x: 10 },
-                  visible: { opacity: 1, x: 0 }
-                }}
-                whileHover={{ x: -4, scale: 1.01 }}
+              <div 
+                key={p.id}
+
                 className="p-4 bg-gray-50 rounded-2xl border border-gray-100 relative group transition-all hover:bg-blue-50/50"
               >
                 <div className="flex justify-between items-start mb-2">
@@ -418,30 +409,20 @@ export default function PaymentProcessor({
                       <Printer className="w-4 h-4" />
                    </button>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </motion.div>
         </div>
       </div>
 
-      <AnimatePresence>
+      
         {showReceipt && lastPayment && selectedStudent && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowReceipt(false)}
-              className="absolute inset-0 bg-gray-900/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden relative z-10 flex flex-col md:flex-row h-[90vh] md:h-auto"
+          <div className="integrated-page z-[300] no-scrollbar">
+            <div
+              className="bg-white w-full w-full mx-auto min-h-screen my-0  relative z-10 shadow-sm flex flex-col no-scrollbar"
             >
               {/* Receipt Content Area */}
-              <div className="flex-1 overflow-y-auto p-8 md:p-12 bg-gray-50/50 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-5 md:p-4 bg-gray-50/50 custom-scrollbar">
                 <style>
                   {`
                     @media print {
@@ -451,13 +432,12 @@ export default function PaymentProcessor({
                       .receipt-header-print {
                         background-color: ${school.receiptHeaderColor || '#f3f4f6'} !important;
                         -webkit-print-color-adjust: exact;
-                      }
-                    }
+
                   `}
                 </style>
                 <div 
                   ref={receiptRef} 
-                  className={`bg-white p-12 shadow-sm rounded-3xl border border-gray-100 min-h-full print:p-0 print:shadow-none print:border-none receipt-print-container ${
+                  className={`bg-white p-4 shadow-sm rounded-3xl border border-gray-100 min-h-full print:p-0 print:shadow-none print:border-none receipt-print-container ${
                     school.receiptFontSize === 'small' ? 'text-sm' : school.receiptFontSize === 'large' ? 'text-xl' : 'text-base'
                   }`} 
                   style={{ color: school.receiptTextColor || '#111827' }}
@@ -465,21 +445,21 @@ export default function PaymentProcessor({
                 >
                   {/* Receipt Header */}
                   <div 
-                    className="flex justify-between items-start mb-12 border-b-2 border-gray-900 pb-8 px-6 -mx-6 rounded-t-3xl receipt-header-print"
+                    className="flex justify-between items-start mb-12 border-b-2 border-gray-900 pb-4 px-6 -mx-6 rounded-t-3xl receipt-header-print"
                     style={{ backgroundColor: school.receiptHeaderColor || '#f3f4f6' }}
                   >
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3">
                       {school.logo ? (
-                        <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center overflow-hidden border-2 border-gray-100 shadow-sm">
+                        <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center overflow-hidden border-2 border-gray-100 shadow-sm">
                           <img src={school.logo} alt="School Logo" className="w-full h-full object-contain" />
                         </div>
                       ) : (
-                        <div className="w-24 h-24 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
-                          <CreditCard className="w-12 h-12" />
+                        <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
+                          <CreditCard className="w-6 h-6" />
                         </div>
                       )}
                       <div>
-                        <h2 className="text-3xl font-black mb-2" style={{ color: school.receiptTextColor || '#111827' }}>{school.name}</h2>
+                        <h2 className="text-lg font-black text-slate-900 tracking-tight mb-2" style={{ color: school.receiptTextColor || '#111827' }}>{school.name}</h2>
                         <div className="flex items-center gap-2">
                            <span className="bg-gray-900 text-white px-3 py-1 rounded-lg text-xs font-black">وصل استلام رسمي</span>
                            {school.phone && <p className="text-[10px] opacity-70 font-bold" dir="ltr">{school.phone}</p>}
@@ -492,17 +472,20 @@ export default function PaymentProcessor({
                         <p className="text-sm font-black font-mono">#{lastPayment.id.slice(-6).toUpperCase()}</p>
                       </div>
                       <p className="text-xs font-black opacity-60">{format(new Date(lastPayment.date), 'yyyy/MM/dd HH:mm')}</p>
+                      {school.academicYear && (
+                         <p className="text-xs font-black opacity-60 mt-1">العام الدراسي: {school.academicYear}</p>
+                      )}
                     </div>
                   </div>
 
                   {/* Body Content */}
-                  <div className="space-y-10 mb-12">
+                  <div className="space-y-2 mb-12">
                      <div className="relative border-b-2 border-gray-100 pb-2">
                         <span className="absolute -top-3 right-4 bg-white px-2 text-[10px] font-black opacity-40">استلمنا من السيد/ة</span>
-                        <p className="text-2xl font-black pr-4">{selectedStudent.name}</p>
+                        <p className="text-lg font-black pr-4">{selectedStudent.name}</p>
                      </div>
 
-                     <div className="flex flex-col md:flex-row gap-8">
+                     <div className="flex flex-col md:flex-row gap-2">
                         <div className="flex-1 relative border-b-2 border-gray-100 pb-2">
                            <span className="absolute -top-3 right-4 bg-white px-2 text-[10px] font-black opacity-40">مبـلغ وقدره</span>
                            <p className="text-4xl font-black text-blue-600 pr-4">{formatCurrency(lastPayment.amount)}</p>
@@ -519,7 +502,7 @@ export default function PaymentProcessor({
                      </div>
                   </div>
 
-                  {school.showPreviousPayments && studentPayments.length > 1 && (
+                  {studentPayments.length > 1 && (
                     <div className="mb-12">
                       <h4 className="text-sm font-black mb-4 border-r-4 border-blue-600 pr-3 flex items-center gap-2">
                          <History className="w-4 h-4" />
@@ -551,20 +534,20 @@ export default function PaymentProcessor({
                   )}
 
                   {/* Account Summary Section */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                     <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-12">
+                     <div className="p-4 bg-gray-50 rounded-3xl border border-gray-100">
                         <p className="text-[10px] font-black opacity-40 mb-2">إجمالي الأقساط</p>
                         <p className="text-lg font-black">{formatCurrency(selectedStudent.totalAmount)}</p>
                      </div>
-                     <div className="p-6 bg-emerald-50 rounded-3xl border border-emerald-100">
+                     <div className="p-4 bg-emerald-50 rounded-3xl border border-emerald-100">
                         <p className="text-[10px] font-black text-emerald-600 mb-2">المسدد سابقاً</p>
                         <p className="text-lg font-black text-emerald-700">
                           {formatCurrency(payments.filter(p => p.studentId === selectedStudent.id && p.id !== lastPayment.id).reduce((sum, p) => sum + p.amount, 0))}
                         </p>
                      </div>
-                     <div className="p-6 bg-red-50 rounded-3xl border-2 border-red-600">
+                     <div className="p-4 bg-red-50 rounded-3xl border-2 border-red-600">
                         <p className="text-[10px] font-black text-red-600 mb-2">المتبقي المطلوب</p>
-                        <p className="text-2xl font-black text-red-700">
+                        <p className="text-lg font-black text-red-700">
                           {formatCurrency(selectedStudent.totalAmount - payments.filter(p => p.studentId === selectedStudent.id).reduce((sum, p) => sum + p.amount, 0))}
                         </p>
                      </div>
@@ -572,7 +555,7 @@ export default function PaymentProcessor({
 
                   {/* Signatures and Footer */}
                   <div className="flex justify-between items-end pt-12">
-                    <div className="flex gap-8">
+                    <div className="flex gap-2">
                       <div className="text-center">
                         {stampConfig.showQRCode && (
                           <>
@@ -593,7 +576,7 @@ export default function PaymentProcessor({
                         </div>
                       )}
                     </div>
-                    <div className="text-center space-y-3">
+                    <div className="text-center space-y-2">
                       {stampConfig.showAccountant && (
                         <>
                           <div className="w-48 border-b-2 border-gray-900 mx-auto"></div>
@@ -607,7 +590,7 @@ export default function PaymentProcessor({
               </div>
 
               {/* Action Sidebar */}
-              <div className="w-full md:w-72 bg-white border-r border-gray-100 p-8 flex flex-col gap-4">
+              <div className="w-full md:w-72 bg-white border-r border-gray-100 p-5 flex flex-col gap-2">
                  <button 
                   onClick={() => setShowReceipt(false)}
                   className="mb-8 p-3 hover:bg-red-50 text-red-500 rounded-2xl transition-all flex items-center justify-center gap-2 self-start"
@@ -616,10 +599,10 @@ export default function PaymentProcessor({
                   <span className="font-bold">إغلاق</span>
                 </button>
 
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
                    <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest px-2">إعدادات الطباعة</h4>
                    
-                   <div className="space-y-4 px-2 bg-gray-50 p-4 rounded-2xl">
+                   <div className="space-y-2 px-2 bg-gray-50 p-4 rounded-2xl">
                      <div className="flex items-center justify-between p-1 bg-white/50 rounded-xl px-2">
                         <label htmlFor="autoPrint" className="text-[10px] font-black text-indigo-600 uppercase">طباعة تلقائية</label>
                         <button 
@@ -656,7 +639,7 @@ export default function PaymentProcessor({
                    
                    <button 
                     onClick={() => handlePrint()} 
-                    className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-[0.98]"
+                    className="w-full bg-blue-600 text-white py-2 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-[0.98]"
                   >
                     <Printer className="w-5 h-5" />
                     طباعة الوصل
@@ -664,7 +647,7 @@ export default function PaymentProcessor({
 
                    <button 
                     onClick={sendWhatsApp} 
-                    className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-emerald-700 shadow-xl shadow-emerald-100 transition-all active:scale-[0.98]"
+                    className="w-full bg-emerald-600 text-white py-2 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-emerald-700 shadow-xl shadow-emerald-100 transition-all active:scale-[0.98]"
                   >
                     <MessageSquare className="w-5 h-5" />
                     إرسال واتساب
@@ -672,7 +655,7 @@ export default function PaymentProcessor({
                 </div>
 
                 <div className="mt-auto pt-8 border-t border-gray-100">
-                   <div className="bg-blue-50 p-6 rounded-3xl text-center">
+                   <div className="bg-blue-50 p-4 rounded-3xl text-center">
                       <p className="text-[10px] font-black text-blue-600 mb-2">حالة الحساب</p>
                       <div className="flex items-center justify-center gap-2">
                          <div className={`w-3 h-3 rounded-full ${remaining === 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
@@ -681,10 +664,10 @@ export default function PaymentProcessor({
                    </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
+      
     </div>
   );
 }

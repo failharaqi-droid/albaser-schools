@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { 
@@ -33,9 +34,13 @@ import {
   TrendingDown,
   PieChart as PieChartIcon,
   Printer,
-  Key
+  Key,
+  ChevronRight,
+  BookOpen,
+  ClipboardList,
+  ChevronDown
 } from 'lucide-react';
-import { School, Student, Payment, Staff, StaffPayment, StaffInvoice, User, GeneralExpense, ManualLedgerConfig, ManualLedgerEntry, AttendanceRecord, AttendanceStatus, ParentNotification, WhatsAppSettings, WhatsAppTemplate, ExpenseCategory, InvestorPayment, Tab } from './types';
+import { School, Student, Payment, Staff, StaffPayment, StaffInvoice, User, GeneralExpense, ManualLedgerConfig, ManualLedgerEntry, AttendanceRecord, AttendanceStatus, ParentNotification, WhatsAppSettings, WhatsAppTemplate, ExpenseCategory, InvestorPayment, Tab, Holiday } from './types';
 import Dashboard from './components/Dashboard';
 import StudentManager from './components/StudentManager';
 import PaymentProcessor from './components/PaymentProcessor';
@@ -53,26 +58,66 @@ import BackupRestore from './components/BackupRestore';
 import BarcodeScanner from './components/BarcodeScanner';
 import PaymentModal from './components/PaymentModal';
 import BackgroundBot from './components/BackgroundBot';
+import ToastContainer from './components/Toast';
 import InvestorManager from './components/InvestorManager';
 import AccountManager from './components/AccountManager';
-import { authService } from './services/authService';
+import UserGuide from './components/UserGuide';
+import SetupWizard from './components/SetupWizard';
+import { auth, signInWithGoogle, logout } from './lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { localDb } from './services/localDb';
 import { WhatsAppService } from './services/WhatsAppService';
-
 
 export default function App() {
   const GUEST_USER: User = {
     id: 'guest',
     username: 'مدير النظام',
     role: 'admin',
-    permissions: ['dashboard', 'students', 'attendance', 'teachers', 'whatsapp', 'payments', 'unpaid', 'expenses', 'investor', 'ledger', 'reports', 'staff', 'idcards', 'accounts', 'backup'],
+    permissions: ['dashboard', 'students', 'attendance', 'teachers', 'whatsapp', 'payments', 'add-student', 'attendance-reports', 'unpaid', 'expenses', 'investor', 'ledger', 'reports', 'staff', 'idcards', 'accounts', 'backup', 'userguide'],
     canModify: true,
     createdAt: new Date().toISOString()
   };
 
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+  const [navHistory, setNavHistory] = useState<Tab[]>(['dashboard']);
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(['النظام والأدوات']);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const handleNavigate = (tab: Tab) => {
+    if (tab === activeTab) return;
+    setNavHistory(prev => [...prev, tab]);
+    setActiveTab(tab);
+    setIsSidebarOpen(false);
+  };
+
+  const handleBack = () => {
+    if (navHistory.length > 1) {
+      const newHistory = [...navHistory];
+      newHistory.pop();
+      const prev = newHistory[newHistory.length - 1];
+      setNavHistory(newHistory);
+      setActiveTab(prev);
+    } else {
+      setActiveTab('dashboard');
+      setNavHistory(['dashboard']);
+    }
+  };
+
+  const [showSetup, setShowSetup] = useState(false);
+
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(() => {
+    return localStorage.getItem('selectedSchoolId') || null;
+  });
+
+  useEffect(() => {
+    if (selectedSchoolId) {
+      localStorage.setItem('selectedSchoolId', selectedSchoolId);
+    } else {
+      localStorage.removeItem('selectedSchoolId');
+    }
+  }, [selectedSchoolId]);
+
   const [preSelectedStudentId, setPreSelectedStudentId] = useState<string | null>(null);
   const [activePaymentStudent, setActivePaymentStudent] = useState<Student | null>(null);
   const [schools, setSchools] = useState<School[]>([]);
@@ -90,6 +135,7 @@ export default function App() {
   const [whatsAppSettings, setWhatsAppSettings] = useState<WhatsAppSettings[]>([]);
   const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsAppTemplate[]>([]);
   const [investorPayments, setInvestorPayments] = useState<InvestorPayment[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
 
   const selectedSchool = useMemo(() => {
     if (selectedSchoolId) {
@@ -107,9 +153,12 @@ export default function App() {
         items: [
           { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
           { id: 'students', label: 'الطلاب', icon: Users },
+          { id: 'add-student', label: 'تسجيل طالب جديد', icon: UserPlus },
           { id: 'attendance', label: 'الحضور والانصراف', icon: ShieldCheck },
+          { id: 'attendance-reports', label: 'تقارير الغيابات', icon: FileText },
           { id: 'teachers', label: 'إدارة المدرسين', icon: GraduationCap },
           { id: 'whatsapp', label: 'بوت واتساب', icon: Bot },
+          { id: 'manual-ledger', label: 'سجل المسطر', icon: ClipboardList },
         ]
       },
       {
@@ -130,6 +179,7 @@ export default function App() {
           { id: 'idcards', label: 'هويات الطلاب', icon: Smartphone },
           { id: 'accounts', label: 'إدارة الحسابات', icon: Key },
           { id: 'backup', label: 'النسخ والبيانات', icon: Database },
+          { id: 'userguide', label: 'دليل النظام', icon: BookOpen },
         ]
       }
     ];
@@ -143,21 +193,24 @@ export default function App() {
 
   const allItems = useMemo(() => menuGroups.flatMap(g => g.items), [menuGroups]);
 
+  const [dbLoaded, setDbLoaded] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  
+  // Remaining states
+
+  const feedbackTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [isGlobalScanning, setIsGlobalScanning] = useState(false);
   const [globalScanFeedback, setGlobalScanFeedback] = useState<{ 
     name: string; 
     status: 'present' | 'absent' | 'payment' | 'error'; 
     time: string;
+    grade?: string | null;
     whatsappUrl?: string | null;
   } | null>(null);
   const [isHardwareScannerActive, setIsHardwareScannerActive] = useState(true);
   const [scannerStatus, setScannerStatus] = useState<'connected' | 'disconnected'>('connected');
 
-  // Auth States
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
   // School Creation & Settings
@@ -180,8 +233,11 @@ export default function App() {
     quickPaymentLink: '',
     receiptHeaderColor: '#f3f4f6',
     receiptTextColor: '#111827',
-    receiptFontSize: 'medium',
-    showPreviousPayments: true
+    receiptFontSize: 'medium' as 'small' | 'medium' | 'large',
+    showPreviousPayments: true,
+    academicYear: '',
+    systemFontFamily: 'Inter',
+    systemFontSize: '200%'
   });
 
   useEffect(() => {
@@ -202,23 +258,38 @@ export default function App() {
         receiptHeaderColor: selectedSchool.receiptHeaderColor || '#f3f4f6',
         receiptTextColor: selectedSchool.receiptTextColor || '#111827',
         receiptFontSize: selectedSchool.receiptFontSize || 'medium',
-        showPreviousPayments: selectedSchool.showPreviousPayments ?? true
+        showPreviousPayments: selectedSchool.showPreviousPayments ?? true,
+        academicYear: (selectedSchool as any).academicYear || '',
+        systemFontFamily: selectedSchool.systemFontFamily || 'Inter',
+        systemFontSize: selectedSchool.systemFontSize || '200%'
       });
     }
   }, [showEditSchool, selectedSchool]);
 
   useEffect(() => {
-    const isAuthEnabled = localStorage.getItem('isAuthEnabled') === 'true';
-    
-    if (!isAuthEnabled) {
-      setUser(GUEST_USER);
-      setIsAuthReady(true);
-    } else {
-      const currentUser = authService.getCurrentUser();
-      setUser(currentUser);
-      setIsAuthReady(true);
-    }
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(data => setDbStatus(data.mode === 'online' ? 'online' : 'offline'))
+      .catch(() => setDbStatus('offline'));
 
+    // Set a default mock/local user or keep it null
+    const u: User = {
+      id: 'local_admin',
+      username: 'مدير النظام (محلي)',
+      role: 'admin',
+      permissions: GUEST_USER.permissions,
+      canModify: true,
+      createdAt: new Date().toISOString()
+    };
+    setUser(u);
+    
+    localDb.init().then(() => {
+      setDbLoaded(true);
+      setIsAuthReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
     const handleUpdate = () => {
       setSchools(localDb.getAll('schools'));
       setStudents(localDb.getAll('students'));
@@ -235,9 +306,10 @@ export default function App() {
       setWhatsAppSettings(localDb.getAll('whatsAppSettings'));
       setWhatsAppTemplates(localDb.getAll('whatsAppTemplates'));
       setInvestorPayments(localDb.getAll('investorPayments'));
+      setHolidays(localDb.getAll('holidays'));
+      setIsAuthReady(true);
     };
 
-    handleUpdate();
     window.addEventListener('local-db-update', handleUpdate);
     return () => window.removeEventListener('local-db-update', handleUpdate);
   }, []);
@@ -248,6 +320,33 @@ export default function App() {
     }
   }, [user, activeTab]);
 
+  // Dynamic Font Scaling
+  useEffect(() => {
+    const handleResize = () => {
+      // Base design dimensions (e.g., standard 1080p desktop)
+      const baseWidth = 1440;
+      const baseHeight = 900;
+      const currentWidth = window.innerWidth;
+      const currentHeight = window.innerHeight;
+      
+      // Calculate ratio to scale the UI properly
+      const scale = Math.min(currentWidth / baseWidth, currentHeight / baseHeight);
+      
+      // Clamp the scale to prevent text from being too small to read or too large
+      const clampedScale = Math.max(0.65, Math.min(scale, 1.4));
+      
+      // Update the root font size, which scales all Tailwind 'rem' classes dynamically
+      document.documentElement.style.fontSize = `${16 * clampedScale}px`;
+    };
+
+    handleResize(); // Init on mount
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      document.documentElement.style.fontSize = '16px'; // Reset on unmount
+    };
+  }, []);
+
   // Global Hardware Scanner Listener
   useEffect(() => {
     let buffer = '';
@@ -255,6 +354,15 @@ export default function App() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isHardwareScannerActive) return;
+
+      // Ignore input focused events to prevent manual typing from triggering scans
+      if (
+        e.target instanceof HTMLInputElement || 
+        e.target instanceof HTMLTextAreaElement || 
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
       
       const currentTime = Date.now();
       
@@ -273,7 +381,7 @@ export default function App() {
           handleGlobalScan(buffer);
           buffer = '';
         }
-      } else if (e.key.length === 1) {
+      } else if (e.key && e.key.length === 1) {
         buffer += e.key;
       }
     };
@@ -285,27 +393,53 @@ export default function App() {
   const playScanBeep = (type: 'success' | 'error') => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
 
       if (type === 'success') {
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
-        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        // First chime (ding)
+        const osc1 = audioCtx.createOscillator();
+        const gainNode1 = audioCtx.createGain();
+        osc1.connect(gainNode1);
+        gainNode1.connect(audioCtx.destination);
+        
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+        gainNode1.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode1.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.02);
+        gainNode1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        
+        osc1.start(audioCtx.currentTime);
+        osc1.stop(audioCtx.currentTime + 0.5);
+
+        // Second chime (dong) higher pitch
+        const osc2 = audioCtx.createOscillator();
+        const gainNode2 = audioCtx.createGain();
+        osc2.connect(gainNode2);
+        gainNode2.connect(audioCtx.destination);
+        
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1108.73, audioCtx.currentTime + 0.15); // C#6
+        gainNode2.gain.setValueAtTime(0, audioCtx.currentTime + 0.15);
+        gainNode2.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.17);
+        gainNode2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7);
+        
+        osc2.start(audioCtx.currentTime + 0.15);
+        osc2.stop(audioCtx.currentTime + 0.7);
+        
       } else {
-        oscillator.type = 'square';
-        oscillator.frequency.setValueAtTime(200, audioCtx.currentTime);
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.2);
         gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
         gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
       }
-
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + (type === 'success' ? 0.1 : 0.2));
     } catch (e) {
       console.warn('Audio feedback failed', e);
     }
@@ -316,9 +450,12 @@ export default function App() {
     const now = new Date().toISOString();
     const timeStr = format(new Date(), 'HH:mm:ss');
 
-    // 1. Staff Match (Current School Only)
-    const staffMatch = staff.find(s => s.schoolId === selectedSchoolId && (s.attendanceBarcode === barcode || s.fingerprintId === barcode));
+    // 1. Staff Match (Global across all schools)
+    const staffMatch = staff.find(s => s.attendanceBarcode === barcode || s.fingerprintId === barcode);
     if (staffMatch) {
+      if (staffMatch.schoolId !== selectedSchoolId) {
+        setSelectedSchoolId(staffMatch.schoolId);
+      }
       playScanBeep('success');
       const records = localDb.getAll('attendanceRecords') as AttendanceRecord[];
       const existing = records.find(r => r.entityId === staffMatch.id && r.date === today);
@@ -338,21 +475,27 @@ export default function App() {
       setGlobalScanFeedback({ 
         name: staffMatch.name, 
         status: 'present', 
-        time: `${timeStr} ${isFingerprint ? '(بصمة)' : ''}` 
+        time: `${timeStr} ${isFingerprint ? '(بصمة)' : ''}`,
+        grade: staffMatch.role
       });
-      setTimeout(() => setGlobalScanFeedback(null), 3000);
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = setTimeout(() => setGlobalScanFeedback(null), 3000);
       return;
     }
 
-    // 2. Student Match (Current School Only)
-    const schoolStudents = students.filter(s => s.schoolId === selectedSchoolId);
-    const studentAttendanceMatch = schoolStudents.find(s => s.attendanceBarcode === barcode);
-    const studentInstallmentMatch = schoolStudents.find(s => s.installmentBarcode === barcode);
-    const studentFingerprintMatch = schoolStudents.find(s => s.fingerprintId === barcode);
-    const studentGenericMatch = schoolStudents.find(s => s.barcode === barcode);
+    // 2. Student Match (Global across all schools)
+    const studentAttendanceMatch = students.find(s => s.attendanceBarcode === barcode);
+    const studentInstallmentMatch = students.find(s => s.installmentBarcode === barcode);
+    const studentFingerprintMatch = students.find(s => s.fingerprintId === barcode);
+    const studentGenericMatch = students.find(s => s.barcode === barcode);
 
     if (studentAttendanceMatch || studentInstallmentMatch || studentFingerprintMatch || studentGenericMatch) {
       const student = studentAttendanceMatch || studentInstallmentMatch || studentFingerprintMatch || studentGenericMatch!;
+      
+      if (student.schoolId !== selectedSchoolId) {
+        setSelectedSchoolId(student.schoolId);
+      }
+      
       playScanBeep('success');
       
       const isFingerprint = studentFingerprintMatch?.fingerprintId === barcode;
@@ -382,7 +525,8 @@ export default function App() {
         setGlobalScanFeedback({ 
           name: student.name, 
           status: 'present', 
-          time: `${timeStr} ${isFingerprint ? '(بصمة)' : ''}` 
+          time: `${timeStr} ${isFingerprint ? '(بصمة)' : ''}`,
+          grade: student.grade
         });
       } 
       
@@ -390,10 +534,11 @@ export default function App() {
       if (studentInstallmentMatch || (studentGenericMatch && activeTab !== 'attendance')) {
         setActivePaymentStudent(student);
         setIsGlobalScanning(false);
-        setGlobalScanFeedback({ name: student.name, status: 'payment', time: timeStr });
+        setGlobalScanFeedback({ name: student.name, status: 'payment', time: timeStr, grade: student.grade });
       }
       
-      setTimeout(() => setGlobalScanFeedback(null), 3000);
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = setTimeout(() => setGlobalScanFeedback(null), 3000);
       return;
     }
 
@@ -462,25 +607,56 @@ export default function App() {
     [investorPayments, selectedSchoolId]
   );
 
+  const schoolHolidays = useMemo(() => 
+    (holidays || []).filter(h => h.schoolId === selectedSchoolId),
+    [holidays, selectedSchoolId]
+  );
+
+  // Global Font Family Application
+  useEffect(() => {
+    if (selectedSchool?.systemFontFamily) {
+      document.documentElement.style.setProperty('--font-sans', selectedSchool.systemFontFamily);
+    } else {
+      document.documentElement.style.setProperty('--font-sans', 'Inter');
+    }
+    
+    if (selectedSchool?.systemFontSize) {
+      document.documentElement.style.setProperty('--system-font-size', selectedSchool.systemFontSize);
+    } else {
+      document.documentElement.style.setProperty('--system-font-size', '200%');
+    }
+  }, [selectedSchool?.systemFontFamily, selectedSchool?.systemFontSize]);
+
+  const handleSetupComplete = (schoolData: Omit<School, 'id'>) => {
+    const newSchool = localDb.add('schools', schoolData) as School;
+    // Notify about update
+    window.dispatchEvent(new Event('local-db-update'));
+    setSelectedSchoolId(newSchool.id);
+    setShowSetup(false);
+  };
+
   useEffect(() => {
     if (selectedSchool && !selectedSchoolId) {
       setSelectedSchoolId(selectedSchool.id);
     }
   }, [selectedSchool, selectedSchoolId]);
 
-  const handleAuth = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setAuthError('');
     try {
-      if (authMode === 'login') {
-        const loggedInUser = authService.login(username, password);
-        setUser(loggedInUser);
-      } else {
-        const newUser = authService.register(username, password);
-        setUser(newUser);
-      }
-    } catch (error: any) {
-      setAuthError(error.message);
+      await signInWithGoogle();
+    } catch (error) {
+      setAuthError('فشل تسجيل الدخول: ' + (error as Error).message);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setUser(null);
+    } catch (error) {
+      console.error("Logout failed", error);
     }
   };
 
@@ -512,7 +688,10 @@ export default function App() {
       receiptHeaderColor: editSchoolData.receiptHeaderColor,
       receiptTextColor: editSchoolData.receiptTextColor,
       receiptFontSize: editSchoolData.receiptFontSize,
-      showPreviousPayments: editSchoolData.showPreviousPayments
+      showPreviousPayments: editSchoolData.showPreviousPayments,
+      academicYear: editSchoolData.academicYear,
+      systemFontFamily: editSchoolData.systemFontFamily,
+      systemFontSize: editSchoolData.systemFontSize
     });
     setShowEditSchool(false);
   };
@@ -528,11 +707,32 @@ export default function App() {
     }
   };
 
-  if (!isAuthReady) return null;
+  const installDatabase = async () => {
+    try {
+      const res = await fetch('/api/install', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        setDbStatus('online');
+      } else {
+        alert("خطأ: يرجى إضافة الإعدادات.\n\n" + data.error);
+      }
+    } catch (err: any) {
+      alert('خطأ في الاتصال.');
+    }
+  };
 
-  const isAuthEnabled = localStorage.getItem('isAuthEnabled') === 'true';
+  if (!isAuthReady || !dbLoaded) return (
+    <div className="w-screen h-screen flex items-center justify-center bg-slate-50">
+      <div className="animate-spin w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full"></div>
+    </div>
+  );
 
-  if (isAuthEnabled && !user) {
+  if (schools.length === 0 || showSetup) {
+    return <SetupWizard onComplete={handleSetupComplete} currentUserId={user?.id || 'guest'} />;
+  }
+
+  if (!user) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4 font-cairo" dir="rtl" style={{ 
         ['--primary-theme' as any]: '#7f1d1d',
@@ -544,54 +744,24 @@ export default function App() {
           
           <div className="relative z-10 text-center mb-12">
             <div className="theme-bg w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl rotate-6 hover:rotate-0 transition-transform duration-500" style={{ boxShadow: '0 20px 25px -5px var(--primary-theme-hover)' }}>
-              <Lock className="text-white w-10 h-10" />
+              <GraduationCap className="text-white w-10 h-10" />
             </div>
-            <h1 className="text-3xl font-black text-gray-900 mb-2">نظام المحاسبة المدرسي</h1>
-            <p className="text-gray-500 font-bold">نظام محلي آمن لإدارة مدرستك</p>
+            <h1 className="text-xl font-black text-gray-900 mb-2">نظام المحاسبة المدرسي</h1>
+            <p className="text-gray-500 font-bold text-lg">نظام سحابي آمن لإدارة مدرستك</p>
           </div>
 
-          <form onSubmit={handleAuth} className="space-y-6 relative z-10">
-            <div className="flex bg-gray-100 p-1.5 rounded-2xl mb-8">
-              <button 
-                type="button"
-                onClick={() => setAuthMode('login')}
-                className={`flex-1 py-3 rounded-xl font-black transition-all ${authMode === 'login' ? 'bg-white theme-text shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                تسجيل الدخول
-              </button>
-              <button 
-                type="button"
-                onClick={() => setAuthMode('register')}
-                className={`flex-1 py-3 rounded-xl font-black transition-all ${authMode === 'register' ? 'bg-white theme-text shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                إنشاء حساب
-              </button>
+          <div className="space-y-6 relative z-10">
+            <div className="text-center mb-4">
+              <span className="text-sm font-black text-slate-400 uppercase tracking-widest">يرجى تسجيل الدخول للمتابعة</span>
             </div>
 
-            <div className="space-y-4">
-              <div className="relative group">
-                <input
-                  required
-                  type="text"
-                  placeholder="اسم المستخدم"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 outline-none transition-all font-bold text-gray-900 focus:ring-4"
-                  style={{ ['--tw-ring-color' as any]: 'var(--primary-theme-soft)', borderColor: 'var(--primary-theme)' }}
-                />
-              </div>
-              <div className="relative group">
-                <input
-                  required
-                  type="password"
-                  placeholder="كلمة المرور"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 outline-none transition-all font-bold text-gray-900 focus:ring-4"
-                  style={{ ['--tw-ring-color' as any]: 'var(--primary-theme-soft)', borderColor: 'var(--primary-theme)' }}
-                />
-              </div>
-            </div>
+            <button
+              onClick={() => handleLogin()}
+              className="w-full bg-white border-2 border-gray-100 text-gray-700 py-4 rounded-2xl font-black text-lg hover:bg-gray-50 transition-all flex items-center justify-center gap-3 shadow-sm active:scale-95"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
+              الدخول بواسطة جوجل
+            </button>
 
             {authError && (
               <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center gap-2 animate-shake">
@@ -599,23 +769,20 @@ export default function App() {
                 {authError}
               </div>
             )}
+            
+            <p className="text-center text-[10px] font-bold text-gray-400 px-4">
+              بالدخول للنظام، أنت توافق على تخزين بيانات مدرستك بشكل سحابي آمن وتلقائي
+            </p>
+          </div>
 
-            <button
-              type="submit"
-              className="w-full theme-bg text-white py-5 rounded-2xl font-black text-lg hover:opacity-90 theme-shadow transition-all transform hover:-translate-y-1 active:scale-95"
-            >
-              {authMode === 'login' ? 'دخول النظام' : 'تأكيد التسجيل'}
-            </button>
-          </form>
-
-          <div className="mt-12 flex items-center justify-center gap-6 opacity-40">
+          <div className="mt-12 flex items-center justify-center gap-3 opacity-40">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4" />
-              <span className="text-[10px] font-black">تشفير محلي</span>
+              <span className="text-[10px] font-black">تخزين سحابي</span>
             </div>
             <div className="flex items-center gap-2">
               <Globe className="w-4 h-4" />
-              <span className="text-[10px] font-black">يعمل بدون انترنت</span>
+              <span className="text-[10px] font-black">مربوط بالاستضافة</span>
             </div>
           </div>
         </div>
@@ -626,9 +793,9 @@ export default function App() {
   if (!selectedSchool && !showAddSchool) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4 font-cairo" dir="rtl">
-        <div className="text-center space-y-8 animate-in fade-in zoom-in duration-500">
+        <div className="text-center space-y-2 animate-in fade-in zoom-in duration-500">
           <div className="bg-red-900 w-24 h-24 rounded-[32px] flex items-center justify-center mx-auto shadow-2xl shadow-red-200 rotate-12">
-            <SchoolIcon className="text-white w-12 h-12" />
+            <SchoolIcon className="text-white w-6 h-6" />
           </div>
           <div className="space-y-2">
             <h2 className="text-4xl font-black text-gray-900">أهلاً بك، {user.username}</h2>
@@ -650,8 +817,8 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4 font-cairo" dir="rtl">
         <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl p-12 border border-gray-100">
-          <h2 className="text-3xl font-black text-gray-900 mb-8 text-center">إضافة مدرسة</h2>
-          <form onSubmit={handleAddSchool} className="space-y-6">
+          <h2 className="text-xl font-black text-gray-900 mb-8 text-center">إضافة مدرسة</h2>
+          <form onSubmit={handleAddSchool} className="space-y-2">
             <div>
               <label className="block text-sm font-black text-gray-700 mb-2">اسم المدرسة</label>
               <input
@@ -659,15 +826,15 @@ export default function App() {
                 type="text"
                 value={newSchoolName}
                 onChange={(e) => setNewSchoolName(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-red-100 font-bold"
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] outline-none focus:ring-4 focus:ring-red-100 font-bold"
                 placeholder="مثال: مدرسة النخبة الأهلية"
               />
             </div>
             <div className="flex gap-3">
-              <button type="submit" className="flex-1 bg-red-900 text-white py-4 rounded-2xl font-black text-lg hover:bg-red-950 shadow-xl shadow-red-200">
+              <button type="submit" className="flex-1 bg-red-900 text-white py-2 rounded-2xl font-black text-lg hover:bg-red-950 shadow-xl shadow-red-200">
                 حفظ المدرسة
               </button>
-              <button type="button" onClick={() => setShowAddSchool(false)} className="px-8 bg-gray-100 text-gray-600 py-4 rounded-2xl font-black hover:bg-gray-200">
+              <button type="button" onClick={() => setShowAddSchool(false)} className="px-8 bg-gray-100 text-gray-600 py-2 rounded-2xl font-black hover:bg-gray-200">
                 إلغاء
               </button>
             </div>
@@ -678,359 +845,442 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex font-cairo selection:bg-red-100 selection:text-red-900 overflow-x-hidden" dir="rtl" style={{ 
+    <div className="w-screen h-screen bg-[#f1f5f9] flex items-center justify-center selection:bg-red-100 selection:text-red-900 overflow-hidden" dir="rtl" style={{ 
       ['--primary-theme' as any]: selectedSchool?.themeColor || '#7f1d1d',
       ['--primary-theme-soft' as any]: (selectedSchool?.themeColor || '#7f1d1d') + '10',
       ['--primary-theme-hover' as any]: (selectedSchool?.themeColor || '#7f1d1d') + '20'
     }}>
-      {/* Sidebar Container */}
-      <aside 
-        className="fixed inset-y-0 right-0 z-50 flex active-sidebar-container w-80 shadow-2xl shadow-slate-900/10"
-      >
-        <div className="h-screen flex flex-col bg-white border-l border-slate-200 relative overflow-hidden w-full">
-          {/* Subtle Decorative Elements */}
-          <div className="absolute top-0 right-0 w-full h-80 bg-[var(--primary-theme-soft)] pointer-events-none opacity-40"></div>
-          
-          {/* Header & School Selector */}
-          <div className="p-5 pb-2 overflow-hidden relative z-10">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="relative group cursor-pointer" onClick={() => setShowEditSchool(true)}>
-                <div 
-                  className="p-3 rounded-2xl shadow-lg flex-shrink-0 relative transition-transform group-hover:scale-105 active:scale-95"
-                  style={{ backgroundColor: 'var(--primary-theme)' }}
-                >
-                  {selectedSchool.logo ? (
-                    <img src={selectedSchool.logo} alt="Logo" className="w-8 h-8 object-contain rounded-lg" />
-                  ) : (
-                    <SchoolIcon className="text-white w-7 h-7" />
-                  )}
+      {/* Main App Window Container */}
+      <div className="w-full h-full bg-white shadow-2xl shadow-slate-200 overflow-hidden flex relative">
+        
+        {/* Mobile Overlay */}
+        {isSidebarOpen && (
+          <div 
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar Container - Integrated inside the Window */}
+        <aside 
+          className={`shrink-0 h-full z-50 flex flex-col bg-white border-slate-200 transition-all duration-300 overflow-hidden absolute lg:relative
+            ${isSidebarOpen ? 'w-[280px] md:w-[340px] translate-x-0 border-l-2 opacity-100' : 'w-0 translate-x-full border-l-0 opacity-0'}
+          `}
+        >
+          <div className="h-full flex flex-col relative w-[280px] md:w-[320px]">
+            
+            {/* Header & School Selector */}
+            <div className="p-5 pb-3 relative z-10 border-b-2 border-slate-100 bg-slate-50">
+              <div className="flex items-center gap-4">
+                <div className="relative cursor-pointer" onClick={() => setShowEditSchool(true)}>
+                  <div 
+                    className="p-3 bg-white rounded-xl shadow-sm border-2 border-slate-200 transition-all active:scale-95 flex-shrink-0"
+                  >
+                    {selectedSchool.logo ? (
+                      <img src={selectedSchool.logo} alt="Logo" className="w-8 h-8 object-contain rounded-lg" />
+                    ) : (
+                      <GraduationCap className="w-8 h-8 text-indigo-600" />
+                    )}
+                  </div>
                 </div>
-                <div 
-                  className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full border-2 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ borderColor: 'var(--primary-theme)' }}
-                >
-                  <Settings className="w-3 h-3" style={{ color: 'var(--primary-theme)' }} />
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-hidden">
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap opacity-40" style={{ color: 'var(--primary-theme)' }}>البوابة الذكية</span>
-                </div>
-                <div className="relative group">
+                <div className="overflow-hidden flex-1 relative cursor-pointer">
                   <select
                     value={selectedSchoolId || ''}
-                    onChange={(e) => setSelectedSchoolId(e.target.value)}
-                    className="w-full bg-transparent border-none text-base font-black truncate outline-none cursor-pointer p-0 appearance-none focus:ring-0 leading-tight transition-colors"
-                    style={{ color: 'var(--primary-theme)' }}
+                    onChange={(e) => {
+                      if (e.target.value === 'ADD_NEW_SCHOOL') {
+                         setShowAddSchool(true);
+                      } else {
+                         setSelectedSchoolId(e.target.value);
+                      }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-20"
+                    disabled={!user?.canModify}
                   >
                     {schools.map(s => (
-                      <option key={s.id} value={s.id} className="text-slate-900 font-bold">{s.name}</option>
+                      <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
+                    {user?.canModify && (
+                      <option value="ADD_NEW_SCHOOL">+ إضافة مدرسة جديدة</option>
+                    )}
                   </select>
+                  <div className="flex items-center gap-1 hover:bg-slate-200 p-1.5 -ml-1.5 rounded-lg transition-colors">
+                    <h1 className="text-xl font-black text-slate-900 leading-tight truncate">{selectedSchool?.name || 'النظام المدرسي'}</h1>
+                    <ChevronDown className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest px-1.5">نظام الإدارة المدرسي</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setShowAddSchool(true)}
-                className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all flex-shrink-0"
-                title="إضافة مدرسة جديدة"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
             </div>
-            
-            <div className="h-[1px] mb-4" style={{ background: `linear-gradient(to left, var(--primary-theme-soft), var(--primary-theme-soft), transparent)` }}></div>
-          </div>
 
-          {/* Navigation Area */}
-          <nav className="flex-1 overflow-y-auto px-3 custom-scrollbar space-y-7 pb-6 overflow-x-hidden relative z-10 scroll-smooth">
-            {menuGroups.map((group, gIdx) => (
-              <div key={gIdx} className="space-y-3">
-                <h3 className="px-4 text-[9px] font-black uppercase tracking-[0.4em] flex items-center gap-3 opacity-30" style={{ color: 'var(--primary-theme)' }}>
-                  <div className="w-1 h-1 rounded-full" style={{ backgroundColor: 'currentColor' }}></div>
-                  {group.title}
-                </h3>
-                <div className="space-y-1">
-                  {group.items.map((item) => {
-                    const isActive = activeTab === item.id;
-                    return (
-                      <motion.button
-                        key={item.id}
-                        layout
-                        whileHover={{ scale: 1.02, x: isActive ? -4 : -2 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => setActiveTab(item.id as Tab)}
-                        className={`w-full group flex items-center gap-4 px-4 py-4 rounded-2xl font-black text-base transition-all relative overflow-hidden ${
-                          isActive 
-                            ? 'text-white shadow-xl animate-in fade-in zoom-in-95 duration-300' 
-                            : 'text-slate-500 hover:text-slate-900'
-                        }`}
-                        style={{ 
-                          backgroundColor: isActive ? 'var(--primary-theme)' : 'transparent',
-                          boxShadow: isActive ? `0 10px 25px -5px ${selectedSchool?.themeColor}40` : 'none'
-                        }}
-                      >
-                        <AnimatePresence>
-                          {isActive && (
-                            <motion.div 
-                              layoutId="active-indicator"
-                              className="absolute inset-x-0 inset-y-0 theme-bg pointer-events-none"
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                            />
-                          )}
-                        </AnimatePresence>
-                        
-                        {isActive && (
-                          <div className="absolute inset-y-0 right-0 w-1.5 bg-white/20 rounded-l-full z-20"></div>
-                        )}
-                        
-                        <span className="relative z-10 flex items-center gap-4">
-                          <item.icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? 'scale-110' : 'opacity-70 group-hover:opacity-100 group-hover:scale-110'}`} />
-                          <span className="transition-all duration-300 whitespace-nowrap tracking-wide font-black truncate max-w-[160px]">
-                            {item.label}
+            {/* Navigation Area */}
+            <nav className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar space-y-8 overflow-x-hidden relative z-10 bg-slate-50/50">
+              {menuGroups.map((group, gIdx) => {
+                const isCollapsible = true;
+                const isCollapsed = collapsedGroups.includes(group.title);
+                
+                const toggleGroup = () => {
+                  if (isCollapsible) {
+                    if (isCollapsed) {
+                      // Expand it and collapse others
+                      setCollapsedGroups(menuGroups.map(g => g.title).filter(t => t !== group.title));
+                    } else {
+                      // Collapse it
+                      setCollapsedGroups(prev => [...prev, group.title]);
+                    }
+                  }
+                };
+
+                return (
+                 <div key={gIdx} className="space-y-4 relative bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+                  <h3 
+                    onClick={toggleGroup}
+                    className={`px-2 text-2xl font-black flex items-center justify-between transition-all ${isCollapsible ? 'cursor-pointer hover:text-indigo-600' : ''}`} 
+                    style={{ color: 'var(--primary-theme)' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-md rotate-45" style={{ backgroundColor: 'currentColor' }}></div>
+                      {group.title}
+                    </div>
+                    {isCollapsible && (
+                      <svg className={`w-6 h-6 transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
+                    )}
+                  </h3>
+                  
+                  <div className={`space-y-2.5 transition-all duration-300 origin-top ${isCollapsible && isCollapsed ? 'h-0 overflow-hidden opacity-0 scale-y-95 mt-0' : 'h-auto opacity-100 scale-y-100 mt-4'}`}>
+                    {group.items.map((item) => {
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => handleNavigate(item.id as Tab)}
+                          className={`w-full group flex items-center justify-between gap-4 px-5 py-4 rounded-2xl font-black text-2xl transition-all relative overflow-hidden ${
+                            isActive 
+                              ? 'text-white shadow-xl scale-[1.02]' 
+                              : 'text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100'
+                          }`}
+                          style={{ 
+                            backgroundColor: isActive ? 'var(--primary-theme)' : 'transparent',
+                            boxShadow: isActive ? '0 10px 25px -5px var(--primary-theme-hover)' : 'none'
+                          }}
+                        >
+                          <span className="relative z-10 flex items-center gap-4">
+                            <div className={`p-2 rounded-xl transition-all ${isActive ? 'bg-white/20' : 'bg-slate-100 group-hover:bg-indigo-100 group-hover:text-indigo-600'}`}>
+                               <item.icon className={`w-8 h-8 transition-transform duration-300 ${isActive ? 'scale-110' : ''}`} />
+                            </div>
+                            <span className="whitespace-nowrap tracking-wide truncate max-w-[180px]">
+                              {item.label}
+                            </span>
                           </span>
-                        </span>
-                        
-                        {!isActive && item.id === 'whatsapp' && (
-                          <div className="relative z-10 mr-auto w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981] transition-all"></div>
-                        )}
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </nav>
-
-          {/* Footer Area */}
-          <div className="p-4 mt-auto relative z-10">
-            <div className="bg-slate-50/50 rounded-3xl p-2.5 border border-slate-100 space-y-2">
-              <button
-                onClick={() => setIsHardwareScannerActive(!isHardwareScannerActive)}
-                className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all relative group/hardware overflow-hidden ${
-                  isHardwareScannerActive 
-                    ? 'bg-slate-900 text-white' 
-                    : 'text-slate-400 hover:bg-slate-100'
-                }`}
-              >
-                <div className={`p-1.5 rounded-lg transition-all ${isHardwareScannerActive ? 'bg-white/10' : 'bg-slate-200'}`}>
-                  <ScanLine className={`w-4 h-4 ${isHardwareScannerActive ? 'animate-pulse' : ''}`} />
-                </div>
-                <div className="text-right flex-1">
-                  <p className="text-[7px] font-black uppercase tracking-widest leading-none mb-1 text-slate-400">Scanner</p>
-                  <p className="text-[11px] font-black truncate uppercase">{isHardwareScannerActive ? 'Online' : 'Offline'}</p>
-                </div>
-              </button>
-
-            <div className="flex items-center justify-between gap-3 px-1">
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center text-red-900 font-black flex-shrink-0 border border-white">
-                    {user.username.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="overflow-hidden flex-1">
-                    <p className="text-xs font-black text-slate-800 leading-none mb-0.5 truncate">{user.username}</p>
-                    <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{user.role === 'admin' ? 'مدير نظام' : 'حساب موظف'}</p>
+                          
+                          {!isActive && item.id === 'whatsapp' && (
+                            <div className="relative w-3 h-3 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_#10b981]"></div>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                {isAuthEnabled && (
+              )})}
+            </nav>
+
+            {/* Footer Area */}
+            <div className="p-5 mt-auto relative z-10 border-t-2 border-slate-100 bg-slate-50">
+              <div className="space-y-3">
+                <button
+                  onClick={() => setIsHardwareScannerActive(!isHardwareScannerActive)}
+                  className={`w-full flex items-center gap-3 p-3.5 rounded-xl transition-all relative font-bold ${
+                    isHardwareScannerActive 
+                      ? 'bg-slate-900 text-white shadow-md' 
+                      : 'bg-white border-2 border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                  }`}
+                >
+                  <div className={`p-1.5 rounded-lg transition-all ${isHardwareScannerActive ? 'bg-white/20' : 'bg-slate-100'}`}>
+                    <ScanLine className={`w-5 h-5 ${isHardwareScannerActive ? 'animate-pulse' : ''}`} />
+                  </div>
+                  <div className="text-right flex-1">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Scanner</p>
+                    <p className="text-xs truncate">{isHardwareScannerActive ? 'Online' : 'Offline'}</p>
+                  </div>
+                </button>
+
+                <div className="flex items-center justify-between gap-3 px-1 pt-1">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-10 h-10 bg-white shadow-sm border-2 border-slate-200 text-slate-700 rounded-xl flex items-center justify-center font-black flex-shrink-0 text-xl">
+                      {user.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="overflow-hidden flex-1">
+                      <p className="text-sm font-black text-slate-900 truncate">{user.username}</p>
+                      <p className="text-[10px] text-slate-500 font-bold">{user.role === 'admin' ? 'مدير نظام' : 'حساب موظف'}</p>
+                    </div>
+                  </div>
                   <button
-                    onClick={() => authService.logout()}
-                    className="flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all group/logout"
+                    onClick={handleLogout}
+                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border-2 border-transparent hover:border-red-100"
                     title="Logout"
                   >
-                    <LogOut className="w-4 h-4" />
+                    <LogOut className="w-5 h-5" />
                   </button>
-                )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </aside>
+        </aside>
 
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 mr-80">
-        <header className="h-[7rem] px-8 flex items-center justify-between sticky top-0 z-30 pointer-events-none">
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="pointer-events-auto flex items-center gap-6"
-          >
-            <div className="bg-white/70 backdrop-blur-2xl px-8 py-3.5 rounded-[2rem] border border-white/80 shadow-2xl shadow-slate-900/5 transition-all flex items-center gap-5">
-              <h2 className="text-xl font-black text-slate-900 flex items-center gap-4">
-                {allItems.find(i => i.id === activeTab)?.icon && (
-                  <div className="text-slate-900 p-2 bg-slate-100 rounded-xl">
-                    {React.createElement(allItems.find(i => i.id === activeTab)!.icon, { className: "w-5 h-5" })}
+        {/* Main Content Area - Integrated inside the Window */}
+        <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 relative bg-[#F8FAFC]`}>
+          <header className="h-[5.5rem] px-8 flex items-center justify-between border-b border-slate-200 bg-white sticky top-0 z-30 flex-shrink-0 shadow-sm">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-center text-slate-800 group hover:bg-slate-100 hover:text-slate-900 transition-all"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+              {activeTab !== 'dashboard' && (
+                <button
+                    onClick={handleBack}
+                  className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 text-slate-800 font-bold group hover:bg-slate-100 hover:text-slate-900 transition-all hidden md:flex"
+                >
+                  <ChevronRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                  <span className="text-xs">الرجوع</span>
+                </button>
+              )}
+              
+              <div 
+                className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black border uppercase tracking-wider transition-all shadow-sm cursor-help" 
+                style={{ 
+                  borderColor: dbStatus === 'online' ? '#10b981' : dbStatus === 'offline' ? '#ef4444' : '#e2e8f0',
+                  backgroundColor: dbStatus === 'online' ? '#ecfdf5' : dbStatus === 'offline' ? '#fef2f2' : '#f8fafc',
+                  color: dbStatus === 'online' ? '#059669' : dbStatus === 'offline' ? '#dc2626' : '#94a3b8'
+                }}
+              >
+                <Database className="w-3 h-3" />
+                {dbStatus === 'online' ? 'سحابي متصل (Hostinger)' : dbStatus === 'offline' ? 'غير متصل (بيانات محلية)' : 'جاري الفحص...'}
+                
+                {dbStatus === 'offline' && (
+                  <div className="absolute top-full right-0 mt-2 w-72 p-3 bg-white border border-red-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-slate-600 font-normal normal-case text-right leading-relaxed block" onClick={(e) => e.stopPropagation()}>
+                    <p className="font-bold text-red-600 mb-1">بيانات Hostinger غير مفعلة</p>
+                    <p className="text-[11px] mb-2 leading-relaxed">النظام يعمل الآن على المتصفح الخاص بك. لتثبيت الداتا بيس على استضافة Hostinger، انقر الزر أدناه.</p>
+                    <button onClick={installDatabase} className="w-full bg-red-600 text-white rounded-md py-2 text-xs font-bold hover:bg-red-700 transition-colors shadow-sm">
+                      تثبيت قاعدة البيانات (Quick Install)
+                    </button>
                   </div>
                 )}
-                <span className="tracking-tight">{allItems.find(i => i.id === activeTab)?.label}</span>
-              </h2>
-              <div className="h-6 w-px bg-slate-200 hidden md:block"></div>
-              <div className="hidden md:flex items-center gap-2 pl-2">
-                <motion.div 
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ repeat: Infinity, duration: 2 }}
-                  className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"
-                ></motion.div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Online</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3 tracking-tight">
+                  {allItems.find(i => i.id === activeTab)?.icon && (
+                    <div className="text-white p-2.5 rounded-xl shadow-md" style={{ backgroundColor: 'var(--primary-theme)' }}>
+                      {React.createElement(allItems.find(i => i.id === activeTab)!.icon, { className: "w-5 h-5" })}
+                    </div>
+                  )}
+                  <span>{allItems.find(i => i.id === activeTab)?.label}</span>
+                </h2>
               </div>
             </div>
-          </motion.div>
-          
-          <div className="pointer-events-auto flex items-center gap-4">
-            <button 
-              onClick={() => setIsGlobalScanning(true)}
-              className="group relative bg-[#020617] text-white pl-8 pr-6 py-3.5 rounded-[1.8rem] shadow-xl shadow-slate-900/20 font-black text-xs flex items-center gap-4 transition-all hover:bg-slate-900 active:scale-95 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-              <div className="w-9 h-9 bg-white/10 group-hover:bg-red-600/20 rounded-xl flex items-center justify-center transition-all duration-500 group-hover:rotate-12">
-                <ScanLine className="w-5 h-5 text-red-400 group-hover:text-red-300" />
+            
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-end px-4 border-r border-slate-100 ml-4">
+                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></div>
+                  متصل بالنظام
+                </span>
+                <span className="text-[9px] font-bold text-slate-400">{format(new Date(), 'yyyy/MM/dd')}</span>
               </div>
-              <span className="tracking-wider uppercase">نظام التحقق الشامل</span>
-            </button>
+              
+              <button 
+                onClick={() => setIsGlobalScanning(true)}
+                className="group relative bg-[#020617] text-white pl-6 pr-4 py-2.5 rounded-2xl shadow-lg font-black text-[10px] flex items-center gap-3 transition-all hover:bg-slate-900 active:scale-95 overflow-hidden"
+              >
+                <div className="w-7 h-7 bg-white/10 group-hover:bg-red-600/20 rounded-lg flex items-center justify-center transition-all duration-500">
+                  <ScanLine className="w-4 h-4 text-red-400" />
+                </div>
+                <span className="tracking-wider uppercase">التحقق الشامل</span>
+              </button>
+            </div>
+          </header>
+
+
+          {/* Content Frame - The Scrollable Container for pages */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-10 relative">
+            <div className="w-full h-full mx-auto">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {activeTab === 'dashboard' && selectedSchool && (
+                <Dashboard 
+                  school={selectedSchool} 
+                  students={schoolStudents} 
+                  payments={schoolPayments}
+                  staff={schoolStaff}
+                  staffPayments={schoolStaffPayments}
+                  staffInvoices={schoolStaffInvoices}
+                  expenses={schoolExpenses}
+                  attendanceRecords={schoolAttendanceRecords}
+                  notifications={parentNotifications}
+                  onNavigate={handleNavigate}
+                />
+              )}
+              {activeTab === 'students' && selectedSchool && (
+                <StudentManager 
+                  school={selectedSchool} 
+                  students={schoolStudents} 
+                  canModify={user.canModify}
+                  onPay={(studentId) => {
+                    setPreSelectedStudentId(studentId);
+                    handleNavigate('payments');
+                  }}
+                />
+              )}
+              {activeTab === 'add-student' && selectedSchool && (
+                <StudentManager 
+                  school={selectedSchool} 
+                  students={schoolStudents} 
+                  canModify={user.canModify}
+                  initialMode="add"
+                  onPay={(studentId) => {
+                    setPreSelectedStudentId(studentId);
+                    handleNavigate('payments');
+                  }}
+                  key="add-student-view"
+                />
+              )}
+              {activeTab === 'payments' && selectedSchool && (
+                <PaymentProcessor 
+                  school={selectedSchool} 
+                  students={schoolStudents} 
+                  payments={schoolPayments} 
+                  canModify={user.canModify}
+                  preSelectedStudentId={preSelectedStudentId}
+                  onClearPreSelect={() => setPreSelectedStudentId(null)}
+                />
+              )}
+              {activeTab === 'reports' && selectedSchool && (
+                <Reports 
+                  school={selectedSchool} 
+                  students={schoolStudents} 
+                  payments={schoolPayments}
+                  staff={schoolStaff}
+                  staffPayments={schoolStaffPayments}
+                  staffInvoices={schoolStaffInvoices}
+                  expenses={schoolExpenses}
+                  investorPayments={schoolInvestorPayments}
+                />
+              )}
+              {activeTab === 'unpaid' && selectedSchool && (
+                <UnpaidList school={selectedSchool} students={schoolStudents} payments={schoolPayments} />
+              )}
+              {activeTab === 'staff' && selectedSchool && (
+                <StaffManager 
+                  school={selectedSchool} 
+                  staff={schoolStaff}
+                  staffPayments={schoolStaffPayments}
+                  staffInvoices={schoolStaffInvoices}
+                  attendanceRecords={schoolAttendanceRecords}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'manual-ledger' && selectedSchool && (
+                <ManualLedgerManager 
+                  school={selectedSchool} 
+                  students={schoolStudents}
+                  configs={schoolLedgerConfigs}
+                  entries={schoolLedgerEntries}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'expenses' && selectedSchool && (
+                <ExpensesManager 
+                  school={selectedSchool} 
+                  expenses={schoolExpenses}
+                  categories={schoolExpenseCategories}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'ledger' && selectedSchool && (
+                <LedgerManager 
+                  school={selectedSchool} 
+                  students={schoolStudents}
+                  staff={schoolStaff}
+                  expenses={schoolExpenses}
+                  payments={schoolPayments}
+                  ledgerConfigs={schoolLedgerConfigs}
+                  ledgerEntries={schoolLedgerEntries}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'attendance' && selectedSchool && (
+                <AttendanceManager 
+                  school={selectedSchool}
+                  students={schoolStudents}
+                  staff={schoolStaff}
+                  attendanceRecords={schoolAttendanceRecords}
+                  holidays={schoolHolidays}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'attendance-reports' && selectedSchool && (
+                <AttendanceManager 
+                  school={selectedSchool}
+                  students={schoolStudents}
+                  staff={schoolStaff}
+                  attendanceRecords={schoolAttendanceRecords}
+                  holidays={schoolHolidays}
+                  canModify={user.canModify}
+                  initialMode="reports"
+                  key="attendance-reports-view"
+                />
+              )}
+              {activeTab === 'teachers' && selectedSchool && (
+                <TeacherManager 
+                  school={selectedSchool} 
+                  students={schoolStudents}
+                  staff={schoolStaff}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'whatsapp' && selectedSchool && (
+                <WhatsAppBotManager 
+                  school={selectedSchool}
+                  students={schoolStudents}
+                  notifications={parentNotifications}
+                  settings={whatsAppSettings}
+                  templates={whatsAppTemplates}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'idcards' && selectedSchool && (
+                <IDCardManager 
+                  school={selectedSchool} 
+                  students={schoolStudents}
+                  staff={schoolStaff}
+                />
+              )}
+              {activeTab === 'investor' && selectedSchool && (
+                <InvestorManager
+                  school={selectedSchool}
+                  investorPayments={schoolInvestorPayments}
+                  canModify={user.canModify}
+                />
+              )}
+              {activeTab === 'accounts' && <AccountManager />}
+              {activeTab === 'backup' && <BackupRestore />}
+              {activeTab === 'userguide' && <UserGuide />}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
-        </header>
+        </main>
+      </div>
 
-
-        <div className="px-10 pb-24 max-w-[1900px] mx-auto w-full">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, x: 20, filter: 'blur(10px)' }}
-              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, x: -20, filter: 'blur(10px)' }}
-              transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-            >
-              {activeTab === 'dashboard' && selectedSchool && (
-            <Dashboard 
-              school={selectedSchool} 
-              students={schoolStudents} 
-              payments={schoolPayments}
-              staff={schoolStaff}
-              staffPayments={schoolStaffPayments}
-              staffInvoices={schoolStaffInvoices}
-              expenses={schoolExpenses}
-              attendanceRecords={schoolAttendanceRecords}
-              notifications={parentNotifications}
-              onNavigate={setActiveTab}
-            />
-          )}
-          {activeTab === 'students' && selectedSchool && (
-            <StudentManager 
-              school={selectedSchool} 
-              students={schoolStudents} 
-              canModify={user.canModify}
-              onPay={(studentId) => {
-                setPreSelectedStudentId(studentId);
-                setActiveTab('payments');
-              }}
-            />
-          )}
-          {activeTab === 'payments' && selectedSchool && (
-            <PaymentProcessor 
-              school={selectedSchool} 
-              students={schoolStudents} 
-              payments={schoolPayments} 
-              canModify={user.canModify}
-              preSelectedStudentId={preSelectedStudentId}
-              onClearPreSelect={() => setPreSelectedStudentId(null)}
-            />
-          )}
-          {activeTab === 'reports' && selectedSchool && (
-            <Reports 
-              school={selectedSchool} 
-              students={schoolStudents} 
-              payments={schoolPayments}
-              staff={schoolStaff}
-              staffPayments={schoolStaffPayments}
-              staffInvoices={schoolStaffInvoices}
-              expenses={schoolExpenses}
-              investorPayments={schoolInvestorPayments}
-            />
-          )}
-          {activeTab === 'unpaid' && selectedSchool && (
-            <UnpaidList school={selectedSchool} students={schoolStudents} payments={schoolPayments} />
-          )}
-          {activeTab === 'staff' && selectedSchool && (
-            <StaffManager 
-              school={selectedSchool} 
-              staff={schoolStaff}
-              staffPayments={schoolStaffPayments}
-              staffInvoices={schoolStaffInvoices}
-              attendanceRecords={schoolAttendanceRecords}
-              canModify={user.canModify}
-            />
-          )}
-          {activeTab === 'expenses' && selectedSchool && (
-            <ExpensesManager 
-              school={selectedSchool} 
-              expenses={schoolExpenses}
-              categories={schoolExpenseCategories}
-              canModify={user.canModify}
-            />
-          )}
-          {activeTab === 'ledger' && selectedSchool && (
-            <LedgerManager 
-              school={selectedSchool} 
-              students={schoolStudents}
-              staff={schoolStaff}
-              expenses={schoolExpenses}
-              payments={schoolPayments}
-              ledgerConfigs={schoolLedgerConfigs}
-              ledgerEntries={schoolLedgerEntries}
-              canModify={user.canModify}
-            />
-          )}
-          {activeTab === 'attendance' && selectedSchool && (
-            <AttendanceManager 
-              school={selectedSchool}
-              students={schoolStudents}
-              staff={schoolStaff}
-              attendanceRecords={schoolAttendanceRecords}
-              canModify={user.canModify}
-            />
-          )}
-          {activeTab === 'teachers' && selectedSchool && (
-            <TeacherManager 
-              school={selectedSchool} 
-              students={schoolStudents}
-              staff={schoolStaff}
-              canModify={user.canModify}
-            />
-          )}
-          {activeTab === 'whatsapp' && selectedSchool && (
-            <WhatsAppBotManager 
-              school={selectedSchool}
-              students={schoolStudents}
-              notifications={parentNotifications}
-              settings={whatsAppSettings}
-              templates={whatsAppTemplates}
-              canModify={user.canModify}
-            />
-          )}
-          {activeTab === 'idcards' && selectedSchool && (
-            <IDCardManager 
-              school={selectedSchool} 
-              students={schoolStudents}
-              staff={schoolStaff}
-            />
-          )}
-          {activeTab === 'investor' && selectedSchool && (
-            <InvestorManager
-              school={selectedSchool}
-              investorPayments={schoolInvestorPayments}
-              canModify={user.canModify}
-            />
-          )}
-          {activeTab === 'accounts' && <AccountManager />}
-          {activeTab === 'backup' && <BackupRestore />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </main>
-
+      {/* Overlays and Modals */}
       {isGlobalScanning && (
         <BarcodeScanner 
           onScan={handleGlobalScan}
@@ -1038,33 +1288,39 @@ export default function App() {
         />
       )}
 
-      <AnimatePresence>
-        {activePaymentStudent && selectedSchool && (
-          <PaymentModal
-            student={activePaymentStudent}
-            school={selectedSchool}
-            payments={payments}
-            onClose={() => setActivePaymentStudent(null)}
-          />
-        )}
-      </AnimatePresence>
+      {activePaymentStudent && selectedSchool && (
+        <PaymentModal
+          student={activePaymentStudent}
+          school={selectedSchool}
+          payments={payments}
+          onClose={() => setActivePaymentStudent(null)}
+        />
+      )}
+      
 
       {/* Global Scan Feedback Overlay */}
       {globalScanFeedback && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top duration-500">
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[200] animate-in zoom-in-95 fade-in duration-300">
           <div className={`${
             globalScanFeedback.status === 'payment' ? 'bg-blue-600 border-blue-400 font-bold' : 
             globalScanFeedback.status === 'error' ? 'bg-red-600 border-red-400' :
             'bg-emerald-600 border-emerald-400'
-          } border-2 p-6 rounded-[2.5rem] shadow-2xl flex items-center gap-6 text-white min-w-[320px]`}>
-            <div className="bg-white/20 p-4 rounded-2xl">
-              {globalScanFeedback.status === 'payment' ? <CreditCard className="w-10 h-10" /> : 
-               globalScanFeedback.status === 'error' ? <XCircle className="w-10 h-10" /> :
-               <CheckCircle2 className="w-10 h-10" />}
+          } border-2 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 text-white min-w-[480px] text-center backdrop-blur-sm bg-opacity-95`}>
+            <div className="bg-white/20 p-6 rounded-full flex-shrink-0">
+              {globalScanFeedback.status === 'payment' ? <CreditCard className="w-20 h-20" /> : 
+               globalScanFeedback.status === 'error' ? <XCircle className="w-20 h-20" /> :
+               <CheckCircle2 className="w-20 h-20" />}
             </div>
-            <div className="text-right flex-1">
-              <h4 className="text-2xl font-black">{globalScanFeedback.name}</h4>
-              <p className="text-sm font-bold opacity-90">
+            <div className="flex-1 w-full space-y-2">
+              <h4 className="text-4xl font-black mb-2">{globalScanFeedback.name}</h4>
+              
+              {globalScanFeedback.grade && (
+                <div className="text-xl font-bold bg-white/20 py-2 px-6 rounded-full inline-block mb-4">
+                  {globalScanFeedback.grade}
+                </div>
+              )}
+
+              <p className="text-xl font-bold opacity-90 mt-2">
                 {globalScanFeedback.status === 'payment' ? 'تم فتح سجل الأقساط' : 
                  globalScanFeedback.status === 'error' ? 'الباركود غير معرف في النظام' :
                  `تم تسجيل الحضور في ${globalScanFeedback.time}`}
@@ -1072,9 +1328,9 @@ export default function App() {
               {globalScanFeedback.whatsappUrl && (
                 <button
                   onClick={() => window.open(globalScanFeedback.whatsappUrl!, '_blank')}
-                  className="mt-3 flex items-center gap-2 bg-white text-emerald-600 px-4 py-2 rounded-xl text-xs font-black hover:bg-emerald-50 transition-all shadow-sm"
+                  className="mt-6 flex items-center justify-center gap-3 bg-white text-emerald-600 px-6 py-4 rounded-2xl text-lg font-black hover:bg-emerald-50 transition-all shadow-sm w-full"
                 >
-                  <MessageSquare className="w-4 h-4" />
+                  <MessageSquare className="w-6 h-6" />
                   إرسال إشعار ولي الأمر
                 </button>
               )}
@@ -1084,388 +1340,460 @@ export default function App() {
       )}
 
       {/* Edit School Modal */}
-      <AnimatePresence>
-        {showEditSchool && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowEditSchool(false)}
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-2xl rounded-[3.5rem] shadow-2xl border border-white/20 relative z-10 overflow-hidden flex flex-col max-h-[90vh]"
-            >
-              <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-50 rounded-full -translate-y-20 translate-x-20 blur-3xl opacity-50"></div>
-              
-              <div className="p-10 border-b border-slate-100 flex items-center justify-between bg-white relative z-20">
-                <div className="flex items-center gap-5">
-                  <div className="theme-bg p-5 rounded-[1.8rem] text-white shadow-xl theme-shadow rotate-3">
-                    <Settings className="w-8 h-8 animate-spin-slow" />
+      {showEditSchool && (
+        <div className="integrated-page">
+          <div className="modal-content">
+              <div className="p-10 lg:p-12 border-b border-gray-100 flex items-center justify-between bg-white relative z-20 sticky top-0 shadow-sm overflow-hidden">
+                <div className="absolute top-0 right-0 w-[40rem] h-[40rem] bg-gradient-to-br from-indigo-50 to-blue-50 rounded-full blur-[80px] -mr-40 -mt-40 pointer-events-none opacity-60" />
+
+                <div className="flex items-center gap-3 text-right relative z-20">
+                  <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-4 rounded-2xl text-white shadow-2xl shadow-indigo-200/50 flex items-center justify-center">
+                    <Settings className="w-10 h-10 animate-[spin_4s_linear_infinite]" />
                   </div>
                   <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">إعدادات المدرسة</h2>
-                    <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest leading-none">School Configuration</p>
+                    <h2 className="text-4xl font-black text-gray-900 tracking-tight leading-relaxed">إعدادات المدرسة والهوية</h2>
+                    <p className="text-sm font-bold text-gray-500 mt-2">تهيئة وتكوين الروابط المرجعية وبيانات المؤسسة الأساسية</p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setShowEditSchool(false)} 
-                  className="bg-slate-50 p-4 hover:bg-slate-100 rounded-[1.5rem] transition-all text-slate-400 hover:text-slate-900 shadow-sm grow-0 shrink-0"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+                <div className="flex items-center gap-2 relative z-20">
+                   <button 
+                    onClick={() => setShowEditSchool(false)} 
+                    className="p-4 bg-slate-50 hover:bg-rose-50 rounded-2xl transition-all text-slate-400 hover:text-rose-600 border border-slate-100"
+                  >
+                    <X className="w-10 h-10" />
+                  </button>
+                </div>
               </div>
 
-              <form onSubmit={handleEditSchool} className="p-10 space-y-8 relative z-10 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/20">
-                <div className="space-y-8">
-                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-2">الهوية البصرية والاسم</h3>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                      <div className="flex flex-col items-center gap-4 bg-slate-50/50 p-6 rounded-[2.5rem] border border-dashed border-slate-200 group">
-                        <div className="w-32 h-32 bg-white rounded-[2.2rem] flex items-center justify-center overflow-hidden border-4 border-white shadow-xl relative">
-                          {editSchoolData.logo ? (
-                            <img src={editSchoolData.logo} alt="Preview" className="w-full h-full object-contain p-2" />
-                          ) : (
-                            <SchoolIcon className="text-slate-200 w-12 h-12 group-hover:scale-110 transition-transform duration-500" />
-                          )}
-                          <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] font-black text-slate-400 uppercase mb-2">شعار المدرسة</p>
-                          <label className="text-xs font-black text-indigo-600 hover:text-indigo-700 cursor-pointer bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100">تحميل صورة</label>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-[10px] font-black text-slate-400 mb-2 px-2 uppercase tracking-widest">لون التصميم الأساسي</label>
-                          <div className="flex items-center gap-3 p-2 bg-slate-50 rounded-[1.5rem] border border-slate-100">
-                            <input
-                              type="color"
-                              value={editSchoolData.themeColor}
-                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, themeColor: e.target.value }))}
-                              className="w-12 h-12 bg-transparent border-none outline-none cursor-pointer p-0 appearance-none rounded-xl overflow-hidden shadow-sm"
-                            />
-                            <input
-                              type="text"
-                              value={editSchoolData.themeColor}
-                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, themeColor: e.target.value }))}
-                              className="flex-1 bg-transparent border-none outline-none font-mono text-sm font-black text-slate-600"
-                            />
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-[10px] font-black text-slate-400 mb-2 px-2 uppercase tracking-widest">اسم المدرسة</label>
-                          <input
-                            required
-                            type="text"
-                            value={editSchoolData.name}
-                            onChange={(e) => setEditSchoolData(prev => ({ ...prev, name: e.target.value }))}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-[1.5rem] px-6 py-4 outline-none focus:ring-4 focus:ring-slate-100 font-black text-slate-800 transition-all"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-2">معلومات التواصل والوقت</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-[10px] font-black text-slate-400 mb-2 px-2 uppercase tracking-widest">رقم الهاتف</label>
-                          <input
-                            type="text"
-                            value={editSchoolData.phone}
-                            onChange={(e) => setEditSchoolData(prev => ({ ...prev, phone: e.target.value }))}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-[1.5rem] px-6 py-4 outline-none focus:ring-4 focus:ring-slate-100 font-bold"
-                            placeholder="رقم هاتف المدرسة"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-black text-slate-400 mb-2 px-2 uppercase tracking-widest">العنوان</label>
-                          <input
-                            type="text"
-                            value={editSchoolData.address}
-                            onChange={(e) => setEditSchoolData(prev => ({ ...prev, address: e.target.value }))}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-[1.5rem] px-6 py-4 outline-none focus:ring-4 focus:ring-slate-100 font-bold"
-                            placeholder="عنوان المدرسة"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="bg-indigo-50/30 p-6 rounded-[2rem] border border-indigo-100/50 space-y-4">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase text-center tracking-widest">توقيتات الدوام الرسمي</p>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="text-center">
-                            <label className="block text-[10px] font-black text-slate-400 mb-1">بداية الدوام</label>
-                            <input
-                              type="time"
-                              value={editSchoolData.shiftStartTime}
-                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, shiftStartTime: e.target.value }))}
-                              className="w-full bg-white border border-slate-100 rounded-xl px-4 py-3 outline-none font-black text-slate-700 shadow-sm"
-                            />
+              <form onSubmit={handleEditSchool} className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 p-10 lg:p-20 overflow-y-auto custom-scrollbar bg-slate-50/20 space-y-12">
+                  <div className="max-w-5xl mx-auto space-y-12">
+                    <div className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm space-y-2">
+                      <h3 className="text-lg font-black text-slate-400 uppercase tracking-[0.2em] mb-4 px-4 text-right">الهوية البصرية والاسم</h3>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-start">
+                        <div className="flex flex-col items-center gap-3 bg-slate-50/50 p-10 rounded-[3.5rem] border border-dashed border-slate-200 group relative">
+                          <div className="w-48 h-48 bg-white rounded-[3rem] flex items-center justify-center overflow-hidden border-8 border-white shadow-2xl relative">
+                            {editSchoolData.logo ? (
+                              <img src={editSchoolData.logo} alt="Preview" className="w-full h-full object-contain p-4" />
+                            ) : (
+                              <SchoolIcon className="text-slate-200 w-20 h-20 group-hover:scale-110 transition-transform duration-500" />
+                            )}
+                            <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Plus className="text-white w-10 h-10" />
+                            </div>
                           </div>
                           <div className="text-center">
-                            <label className="block text-[10px] font-black text-slate-400 mb-1">نهاية الدوام</label>
-                            <input
-                              type="time"
-                              value={editSchoolData.shiftEndTime}
-                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, shiftEndTime: e.target.value }))}
-                              className="w-full bg-white border border-slate-100 rounded-xl px-4 py-3 outline-none font-black text-slate-700 shadow-sm"
-                            />
+                            <p className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest">شعار المدرسة الرسمي</p>
+                            <span className="text-sm font-black text-indigo-600 bg-white px-8 py-3 rounded-2xl shadow-sm border border-slate-100">تحميل شعار جديد</span>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="bg-slate-900 p-8 rounded-[3rem] text-white shadow-2xl space-y-6 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-16 translate-x-16 blur-2xl"></div>
-                    <div className="flex items-center gap-3 mb-2 relative z-10">
-                      <div className="p-3 bg-white/10 rounded-2xl">
-                        <CreditCard className="w-6 h-6 text-indigo-300" />
-                      </div>
-                      <h3 className="text-xl font-black text-white">إعدادات الدفع المالي</h3>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                      <div>
-                        <label className="block text-[10px] font-black text-slate-400 mb-2 px-2 uppercase tracking-widest">رقم محفظة زين كاش</label>
-                        <input
-                          type="text"
-                          value={editSchoolData.zainCashNumber}
-                          onChange={(e) => setEditSchoolData(prev => ({ ...prev, zainCashNumber: e.target.value }))}
-                          className="w-full bg-white/5 border border-white/10 rounded-[1.5rem] px-6 py-4 outline-none focus:ring-4 focus:ring-white/5 font-black text-indigo-100"
-                          placeholder="رقم المحفظة"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-black text-slate-400 mb-2 px-2 uppercase tracking-widest">رابط الدفع المباشر</label>
-                        <input
-                          type="url"
-                          value={editSchoolData.quickPaymentLink}
-                          onChange={(e) => setEditSchoolData(prev => ({ ...prev, quickPaymentLink: e.target.value }))}
-                          className="w-full bg-white/5 border border-white/10 rounded-[1.5rem] px-6 py-4 outline-none focus:ring-4 focus:ring-white/5 font-bold text-indigo-100"
-                          placeholder="https://pay.link/..."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 pt-4 border-t border-white/10 relative z-10">
-                       <label className="block text-[10px] font-black text-slate-400 mb-0 px-2 uppercase tracking-widest">نمط وصل القبض (خيارات متقدمة)</label>
-                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                            <label className="block text-[8px] font-black text-slate-500 mb-2 uppercase">حجم الخط</label>
-                            <select
-                              value={editSchoolData.receiptFontSize}
-                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptFontSize: e.target.value as any }))}
-                              className="w-full bg-transparent border-none text-xs font-black outline-none cursor-pointer p-0"
-                            >
-                              <option value="small" className="text-slate-900">صغير (S)</option>
-                              <option value="medium" className="text-slate-900">متوسط (M)</option>
-                              <option value="large" className="text-slate-900">كبير (L)</option>
-                            </select>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-xs font-black text-slate-400 mb-3 px-4 uppercase tracking-widest text-right">لون الهوية البصرية (Theme)</label>
+                            <div className="flex items-center gap-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-inner">
+                              <input
+                                type="color"
+                                value={editSchoolData.themeColor}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, themeColor: e.target.value }))}
+                                className="w-10 h-10 bg-transparent border-none outline-none cursor-pointer p-0 appearance-none rounded-2xl overflow-hidden shadow-lg"
+                              />
+                              <input
+                                type="text"
+                                value={editSchoolData.themeColor}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, themeColor: e.target.value }))}
+                                className="flex-1 bg-transparent border-none outline-none font-mono text-xl font-black text-slate-600 text-left"
+                              />
+                            </div>
                           </div>
                           
-                          <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-200">الدفعات السابقة</span>
+                          <div>
+                            <label className="block text-xs font-black text-slate-400 mb-3 px-4 uppercase tracking-widest text-right">اسم المدرسة الرسمي</label>
+                            <input
+                              required
+                              type="text"
+                              value={editSchoolData.name}
+                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, name: e.target.value }))}
+                              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-8 py-6 outline-none focus:ring-8 focus:ring-slate-100 font-black text-lg text-slate-800 transition-all text-right shadow-inner"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-black text-slate-400 mb-3 px-4 uppercase tracking-widest text-right">العام الدراسي</label>
+                            <input
+                              type="text"
+                              value={editSchoolData.academicYear || ''}
+                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, academicYear: e.target.value }))}
+                              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-8 py-6 outline-none focus:ring-8 focus:ring-slate-100 font-black text-lg text-slate-800 transition-all text-right shadow-inner"
+                              placeholder="مثال: 2025-2026"
+                            />
+                          </div>
+
+                          <div className="col-span-1">
+                            <label className="block text-xs font-black text-slate-400 mb-3 px-4 uppercase tracking-widest text-right">خط النظام</label>
+                            <div className="relative">
+                              <select
+                                value={editSchoolData.systemFontFamily || 'Inter'}
+                                onChange={(e) => {
+                                  setEditSchoolData(prev => ({ ...prev, systemFontFamily: e.target.value }));
+                                }}
+                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-8 py-6 outline-none focus:ring-8 focus:ring-slate-100 font-black text-lg text-slate-800 transition-all text-right shadow-inner appearance-none cursor-pointer"
+                                style={{ fontFamily: editSchoolData.systemFontFamily || 'Inter' }}
+                              >
+                                <option value="Inter" style={{ fontFamily: 'Inter' }}>Inter (الافتراضي)</option>
+                                <option value="'Cairo', sans-serif" style={{ fontFamily: "'Cairo', sans-serif" }}>Cairo (كايرو)</option>
+                                <option value="'Tajawal', sans-serif" style={{ fontFamily: "'Tajawal', sans-serif" }}>Tajawal (تجوال)</option>
+                                <option value="'Almarai', sans-serif" style={{ fontFamily: "'Almarai', sans-serif" }}>Almarai (المراعي)</option>
+                                <option value="'Changa', sans-serif" style={{ fontFamily: "'Changa', sans-serif" }}>Changa (تشانجا)</option>
+                                <option value="'Readex Pro', sans-serif" style={{ fontFamily: "'Readex Pro', sans-serif" }}>Readex Pro</option>
+                              </select>
+                              <div className="absolute left-6 top-1/2 -translate-y-1/2 pointer-events-none">
+                                <ChevronDown className="w-5 h-5 text-slate-400" />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="col-span-1">
+                            <label className="block text-xs font-black text-slate-400 mb-3 px-4 uppercase tracking-widest text-right">حجم خط النظام</label>
+                            <div className="relative">
+                              <select
+                                value={editSchoolData.systemFontSize || '200%'}
+                                onChange={(e) => {
+                                  setEditSchoolData(prev => ({ ...prev, systemFontSize: e.target.value }));
+                                }}
+                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-8 py-6 outline-none focus:ring-8 focus:ring-slate-100 font-black text-lg text-slate-800 transition-all text-right shadow-inner appearance-none cursor-pointer"
+                              >
+                                <option value="160%">صغير (160%)</option>
+                                <option value="180%">متوسط (180%)</option>
+                                <option value="200%">الافتراضي (200%)</option>
+                                <option value="220%">كبير (220%)</option>
+                                <option value="240%">كبير جداً (240%)</option>
+                                <option value="260%">ضخم (260%)</option>
+                                <option value="300%">عملاق (300%)</option>
+                              </select>
+                              <div className="absolute left-6 top-1/2 -translate-y-1/2 pointer-events-none">
+                                <ChevronDown className="w-5 h-5 text-slate-400" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm space-y-2">
+                      <h3 className="text-lg font-black text-slate-400 uppercase tracking-[0.2em] mb-4 px-4 text-right">معلومات التواصل والوقت</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-xs font-black text-slate-400 mb-3 px-4 uppercase tracking-widest text-right">رقم الهاتف الأساسي</label>
+                            <input
+                              type="text"
+                              value={editSchoolData.phone}
+                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, phone: e.target.value }))}
+                              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-8 py-5 outline-none focus:ring-8 focus:ring-slate-100 font-black text-xl text-slate-700 text-right shadow-inner"
+                              placeholder="أدخل رقم هاتف المدرسة..."
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-black text-slate-400 mb-3 px-4 uppercase tracking-widest text-right">العنوان الجغرافي</label>
+                            <input
+                              type="text"
+                              value={editSchoolData.address}
+                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, address: e.target.value }))}
+                              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-8 py-5 outline-none focus:ring-8 focus:ring-slate-100 font-black text-xl text-slate-700 text-right shadow-inner"
+                              placeholder="أدخل عنوان المدرسة بالتفصيل..."
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bg-indigo-50/50 p-10 rounded-[3rem] border border-indigo-100 space-y-2">
+                          <p className="text-xs font-black text-indigo-400 uppercase text-center tracking-[0.3em]">توقيتات الدوام الرسمي</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="text-center">
+                              <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">بداية الدوام</label>
+                              <input
+                                type="time"
+                                value={editSchoolData.shiftStartTime}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, shiftStartTime: e.target.value }))}
+                                className="w-full bg-white border border-slate-100 rounded-2xl px-3 py-1.5 min-h-[38px] outline-none font-black text-lg text-slate-700 shadow-sm text-center"
+                              />
+                            </div>
+                            <div className="text-center">
+                              <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">نهاية الدوام</label>
+                              <input
+                                type="time"
+                                value={editSchoolData.shiftEndTime}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, shiftEndTime: e.target.value }))}
+                                className="w-full bg-white border border-slate-100 rounded-2xl px-3 py-1.5 min-h-[38px] outline-none font-black text-lg text-slate-700 shadow-sm text-center"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900 p-12 rounded-[4rem] text-white shadow-2xl space-y-10 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-32 translate-x-32 blur-[100px]"></div>
+                      <div className="flex items-center gap-2 mb-4 relative z-10">
+                        <div className="p-4 bg-white/10 rounded-2xl">
+                          <DollarSign className="w-6 h-6 text-indigo-300" />
+                        </div>
+                        <h3 className="text-lg font-black text-white">إعدادات السمة المالية والوصولات</h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
+                        <div>
+                          <label className="block text-[10px] font-black text-slate-400 mb-3 px-4 uppercase tracking-[0.3em] text-right">رقم محفظة زين كاش</label>
+                          <input
+                            type="text"
+                            value={editSchoolData.zainCashNumber}
+                            onChange={(e) => setEditSchoolData(prev => ({ ...prev, zainCashNumber: e.target.value }))}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-8 py-5 outline-none focus:ring-8 focus:ring-white/5 font-black text-xl text-indigo-100 text-right shadow-inner"
+                            placeholder="أدخل رقم المحفظة لظهوره في الوصولات..."
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black text-slate-400 mb-3 px-4 uppercase tracking-[0.3em] text-right">رابط الدفع المباشر</label>
+                          <input
+                            type="url"
+                            value={editSchoolData.quickPaymentLink}
+                            onChange={(e) => setEditSchoolData(prev => ({ ...prev, quickPaymentLink: e.target.value }))}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-8 py-5 outline-none focus:ring-8 focus:ring-white/5 font-black text-xl text-indigo-100 text-left shadow-inner"
+                            placeholder="https://pay.link/..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-10 border-t border-white/10 relative z-10">
+                         <label className="block text-[10px] font-black text-slate-400 mb-2 px-4 uppercase tracking-[0.4em] text-right">نمط وصل القبض والطباعة</label>
+                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="bg-white/5 p-4 rounded-3xl border border-white/10">
+                              <label className="block text-[9px] font-black text-slate-500 mb-3 uppercase text-right">حجم الخط في الطباعة</label>
+                              <select
+                                value={editSchoolData.receiptFontSize}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptFontSize: e.target.value as any }))}
+                                className="w-full bg-transparent border-none text-base font-black outline-none cursor-pointer p-0 text-white"
+                              >
+                                <option value="small" className="text-slate-900">حجم خط صغير (S)</option>
+                                <option value="medium" className="text-slate-900">حجم خط متوسط (M)</option>
+                                <option value="large" className="text-slate-900">حجم خط كبير (L)</option>
+                              </select>
+                            </div>
+                            
                             <button
                               type="button"
                               onClick={() => setEditSchoolData(prev => ({ ...prev, showPreviousPayments: !prev.showPreviousPayments }))}
-                              className={`w-10 h-5 rounded-full relative transition-all duration-300 ${editSchoolData.showPreviousPayments ? 'bg-indigo-500' : 'bg-white/10'}`}
+                              className="bg-white/5 p-4 rounded-3xl border border-white/10 flex items-center justify-between hover:bg-white/10 transition-all"
                             >
-                              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${editSchoolData.showPreviousPayments ? 'right-5.5' : 'right-0.5'}`}></div>
+                              <span className="text-[11px] font-black text-slate-200">إظهار الدفعات السابقة</span>
+                              <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${editSchoolData.showPreviousPayments ? 'bg-indigo-500' : 'bg-white/20'}`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${editSchoolData.showPreviousPayments ? 'right-7' : 'right-1'}`}></div>
+                              </div>
                             </button>
-                          </div>
 
-                          <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-200">الطباعة الآلية</span>
                             <button
                               type="button"
                               onClick={() => setEditSchoolData(prev => ({ ...prev, autoPrintReceipt: !prev.autoPrintReceipt }))}
-                              className={`w-10 h-5 rounded-full relative transition-all duration-300 ${editSchoolData.autoPrintReceipt ? 'bg-indigo-500' : 'bg-white/10'}`}
+                              className="bg-white/5 p-4 rounded-3xl border border-white/10 flex items-center justify-between hover:bg-white/10 transition-all"
                             >
-                              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${editSchoolData.autoPrintReceipt ? 'right-5.5' : 'right-0.5'}`}></div>
+                              <span className="text-[11px] font-black text-slate-200">الطباعة الآلية عند الحفظ</span>
+                              <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${editSchoolData.autoPrintReceipt ? 'bg-indigo-500' : 'bg-white/20'}`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${editSchoolData.autoPrintReceipt ? 'right-7' : 'right-1'}`}></div>
+                              </div>
                             </button>
-                          </div>
-                       </div>
+                         </div>
 
-                       <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10 space-y-4">
-                          <div className="flex flex-wrap gap-6">
-                            <div className="flex-1 min-w-[140px]">
-                               <label className="block text-[9px] font-black text-slate-500 mb-2 uppercase">لون الترويسة</label>
-                               <div className="flex items-center gap-3">
-                                  <input type="color" value={editSchoolData.receiptHeaderColor} onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptHeaderColor: e.target.value }))} className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-none" />
-                                  <span className="text-[10px] font-mono text-indigo-200">{editSchoolData.receiptHeaderColor}</span>
-                               </div>
+                         <div className="bg-white/5 p-10 rounded-[3rem] border border-white/10 space-y-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                              <div className="space-y-2">
+                                 <label className="block text-[10px] font-black text-slate-500 mb-2 uppercase text-right">ألوان ترويسة الوصل</label>
+                                 <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+                                    <input type="color" value={editSchoolData.receiptHeaderColor} onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptHeaderColor: e.target.value }))} className="w-6 h-6 rounded-xl cursor-pointer bg-transparent border-none shadow-lg" />
+                                    <span className="text-xl font-mono text-indigo-200">{editSchoolData.receiptHeaderColor}</span>
+                                 </div>
+                              </div>
+                              <div className="space-y-2">
+                                 <label className="block text-[10px] font-black text-slate-500 mb-2 uppercase text-right">ألوان نصوص الوصل</label>
+                                 <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+                                    <input type="color" value={editSchoolData.receiptTextColor} onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptTextColor: e.target.value }))} className="w-6 h-6 rounded-xl cursor-pointer bg-transparent border-none shadow-lg" />
+                                    <span className="text-xl font-mono text-indigo-200">{editSchoolData.receiptTextColor}</span>
+                                 </div>
+                              </div>
                             </div>
-                            <div className="flex-1 min-w-[140px]">
-                               <label className="block text-[9px] font-black text-slate-500 mb-2 uppercase">لون النص</label>
-                               <div className="flex items-center gap-3">
-                                  <input type="color" value={editSchoolData.receiptTextColor} onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptTextColor: e.target.value }))} className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-none" />
-                                  <span className="text-[10px] font-mono text-indigo-200">{editSchoolData.receiptTextColor}</span>
-                               </div>
+                            <div className="space-y-2">
+                              <label className="block text-[10px] font-black text-slate-500 mb-2 uppercase text-right px-4">ملاحظات ختامية تظهر أسفل كل وصل</label>
+                              <input
+                                type="text"
+                                value={editSchoolData.receiptNote}
+                                onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptNote: e.target.value }))}
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-8 py-5 outline-none focus:ring-4 focus:ring-indigo-500/30 font-bold text-lg text-indigo-100 text-right"
+                                placeholder="مثال: يرجى الاحتفاظ بالوصل لغرض المراجعة..."
+                              />
                             </div>
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-black text-slate-500 mb-2 uppercase">ملاحظة أسفل الوصل</label>
-                            <input
-                              type="text"
-                              value={editSchoolData.receiptNote}
-                              onChange={(e) => setEditSchoolData(prev => ({ ...prev, receiptNote: e.target.value }))}
-                              className="w-full bg-white/5 border border-white/10 rounded-[1.2rem] px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-500/30 font-bold text-xs text-indigo-100"
-                              placeholder="ملاحظات ختامية للوصل..."
-                            />
-                          </div>
-                       </div>
+                         </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditSchoolData(prev => ({ ...prev, autoAbsenceCheckEnabled: !prev.autoAbsenceCheckEnabled }))}
+                        className={`p-10 rounded-[4rem] flex items-center justify-between border transition-all ${
+                          editSchoolData.autoAbsenceCheckEnabled 
+                            ? 'bg-indigo-50 border-indigo-200 text-indigo-900 shadow-xl' 
+                            : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200 shadow-sm'
+                        }`}
+                      >
+                        <div className="text-right">
+                          <h4 className="text-xl font-black flex items-center gap-2">
+                            <div className={`p-2 rounded-xl ${editSchoolData.autoAbsenceCheckEnabled ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-300'}`}>
+                              <CheckCircle2 className="w-6 h-6" />
+                            </div>
+                            معالجة وتدقيق الغياب تلقائياً
+                          </h4>
+                          <p className={`text-sm font-bold mt-2 pr-12 ${editSchoolData.autoAbsenceCheckEnabled ? 'text-indigo-600/70' : 'text-slate-400'}`}>
+                            النظام سيقوم تلقائياً بإخطار أولياء الأمور عبر الواتساب في حال عدم تسجيل بصمة الطالب عند فحص الغياب
+                          </p>
+                        </div>
+                        <div className={`w-16 h-8 rounded-full transition-all relative ${editSchoolData.autoAbsenceCheckEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                          <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${editSchoolData.autoAbsenceCheckEnabled ? 'right-9' : 'right-1'}`}></div>
+                        </div>
+                      </button>
+
+
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="p-10 rounded-[4rem] flex items-center justify-between border border-rose-100 bg-rose-50/30 text-rose-600 hover:bg-rose-50 transition-all group shadow-sm hover:shadow-xl"
+                      >
+                        <div className="text-right">
+                          <h4 className="text-xl font-black flex items-center gap-2">
+                            <div className="p-2 bg-rose-100 rounded-xl group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                              <Trash2 className="w-6 h-6" />
+                            </div>
+                            حذف المدرسة نهائياً من النظام
+                          </h4>
+                          <p className="text-sm font-bold mt-2 pr-12 opacity-60">
+                            سيقوم هذا الإجراء بمسح كافة سجلات الطلاب والبيانات المالية والنسخ الاحتياطية لهذه المدرسة
+                            {schools.length === 1 && " (تنبيه: هذه هي المدرسة الوحيدة في النظام)"}
+                          </p>
+                        </div>
+                        <div className="w-6 h-6 bg-white rounded-2xl flex items-center justify-center shadow-sm group-hover:scale-125 transition-transform border border-rose-50">
+                          <Trash2 className="w-6 h-6" />
+                        </div>
+                      </button>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setEditSchoolData(prev => ({ ...prev, autoAbsenceCheckEnabled: !prev.autoAbsenceCheckEnabled }))}
-                      className={`p-7 rounded-[2.5rem] flex items-center justify-between border transition-all ${
-                        editSchoolData.autoAbsenceCheckEnabled 
-                          ? 'bg-indigo-50 border-indigo-100 text-indigo-900' 
-                          : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
-                      }`}
-                    >
-                      <div className="text-right">
-                        <h4 className="text-base font-black flex items-center gap-3">
-                          <CheckCircle2 className={`w-5 h-5 ${editSchoolData.autoAbsenceCheckEnabled ? 'text-indigo-600' : 'text-slate-200'}`} />
-                          معالجة الغياب تلقائياً
-                        </h4>
-                        <p className={`text-[10px] font-bold mt-1 ${editSchoolData.autoAbsenceCheckEnabled ? 'text-indigo-600/70' : 'text-slate-400'}`}>
-                          إرسال إشعارات التنبيه لولي الأمر بعد انتهاء توقيت الدوام الرسمي
-                        </p>
-                      </div>
-                      <div className={`w-14 h-7 rounded-full transition-all relative ${editSchoolData.autoAbsenceCheckEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                        <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-sm ${editSchoolData.autoAbsenceCheckEnabled ? 'right-8' : 'right-1'}`}></div>
-                      </div>
-                    </button>
-
-
-                  {schools.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="p-6 rounded-[2rem] flex items-center justify-between border border-rose-100 bg-rose-50/50 text-rose-600 hover:bg-rose-100 transition-all group"
-                    >
-                      <div className="text-right">
-                        <h4 className="text-sm font-black flex items-center gap-2">
-                          <XCircle className="w-4 h-4" />
-                          حذف هذه المدرسة نهائياً
-                        </h4>
-                        <p className="text-[10px] font-bold mt-0.5 opacity-70">
-                          سيتم مسح كافة سجلات الطلاب والمالية لهذه المدرسة
-                        </p>
-                      </div>
-                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                        <Trash2 className="w-5 h-5" />
-                      </div>
-                    </button>
-                  )}
                 </div>
 
-                </div>
-
-                <div className="pt-6">
-                  <button type="submit" className="w-full theme-bg text-white py-6 rounded-[2.2rem] font-black text-xl theme-shadow hover:opacity-90 transition-all active:scale-[0.98] transform flex items-center justify-center gap-3">
-                    <CheckCircle2 className="w-6 h-6" />
-                    حفظ وتركيب الإعدادات
+                <div className="p-10 bg-white border-t border-slate-100 flex items-center justify-center sticky bottom-0 z-30">
+                  <button type="submit" className="w-full max-w-xl theme-bg text-white py-8 rounded-2xl font-black text-lg theme-shadow hover:scale-[1.02] transition-all active:scale-[0.98] transform shadow-2xl flex items-center justify-center gap-3">
+                    <CheckCircle2 className="w-10 h-10" />
+                    حفظ وتركيب كافة الإعدادات الحالية
                   </button>
                 </div>
               </form>
-            </motion.div>
+            </div>
           </div>
-        )}
-      </AnimatePresence>
+          )}
 
       {/* Delete School Confirmation Modal */}
-      <AnimatePresence>
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowDeleteConfirm(false)}
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-md rounded-[3.5rem] shadow-2xl p-10 border border-white/20 relative z-10 overflow-hidden text-center"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-full -translate-y-16 translate-x-16 blur-2xl opacity-50"></div>
-              
-              <div className="relative z-10">
-                <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl shadow-rose-100">
-                  <AlertCircle className="w-10 h-10" />
-                </div>
-                
-                <h3 className="text-2xl font-black text-slate-900 mb-3">تأكيد حذف المدرسة</h3>
-                <p className="text-slate-500 font-bold mb-8 leading-relaxed">
-                  هل أنت متأكد من حذف <span className="text-rose-600">"{selectedSchool?.name}"</span>؟ 
-                  <br />
-                  هذا الإجراء سيقوم بمسح كافة سجلات الطلاب، الموظفين، والبيانات المالية نهائياً ولا يمكن التراجع عنه.
-                </p>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={() => {
-                      if (!selectedSchool) return;
-                      localDb.delete('schools', selectedSchool.id);
-                      // Also delete related data
-                      const deleteRelated = (collection: any, field: string) => {
-                        const items = localDb.getAll(collection);
-                        items.forEach((item: any) => {
-                          if (item[field] === selectedSchool.id) {
-                            localDb.delete(collection, item.id);
-                          }
-                        });
-                      };
-                      
-                      deleteRelated('students', 'schoolId');
-                      deleteRelated('staff', 'schoolId');
-                      deleteRelated('expenses', 'schoolId');
-                      deleteRelated('manualLedgerConfigs', 'schoolId');
-                      deleteRelated('manualLedgerEntries', 'schoolId');
-                      deleteRelated('expenseCategories', 'schoolId');
-                      deleteRelated('attendanceRecords', 'schoolId');
-                      deleteRelated('investorPayments', 'schoolId');
-                      
-                      setSelectedSchoolId(schools.find(s => s.id !== selectedSchool.id)?.id || null);
-                      setShowDeleteConfirm(false);
-                      setShowEditSchool(false);
-                    }}
-                    className="w-full bg-rose-600 text-white py-5 rounded-[1.8rem] font-black text-lg hover:bg-rose-700 shadow-xl shadow-rose-100 transition-all active:scale-95 flex items-center justify-center gap-3"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                    تأكيد الحذف النهائي
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="w-full bg-slate-100 text-slate-600 py-5 rounded-[1.8rem] font-black text-lg hover:bg-slate-200 transition-all"
-                  >
-                    إلغاء الإجراء
-                  </button>
-                </div>
+      {showDeleteConfirm && (
+        <div className="integrated-page">
+          <div key="delete-school-modal" className="modal-content">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-full -translate-y-16 translate-x-16 blur-2xl opacity-50"></div>
+            
+            <div className="relative z-10 flex flex-col items-center">
+              <div className="w-24 h-24 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mb-8 shadow-xl shadow-rose-100 rotate-3">
+                <AlertCircle className="w-6 h-6" />
               </div>
-            </motion.div>
+              
+              <h3 className="text-xl font-black text-slate-900 mb-4">تأكيد حذف المدرسة النهائية</h3>
+              <p className="text-slate-500 font-bold mb-10 leading-relaxed text-lg max-w-md mx-auto">
+                هل أنت متأكد من حذف <span className="text-rose-600 font-black">"{selectedSchool?.name}"</span>؟ 
+                <br />
+                سيقوم هذا الإجراء بمسح كافة السجلات والبيانات نهائياً.
+              </p>
+
+              <div className="w-full max-w-sm space-y-2">
+                <button
+                  onClick={() => {
+                    if (!selectedSchool) return;
+                    
+                    const schoolId = selectedSchool.id;
+                    const schoolStudentIds = localDb.getAll('students')
+                      .filter(s => s.schoolId === schoolId)
+                      .map(s => s.id);
+                    const schoolStaffIds = localDb.getAll('staff')
+                      .filter(s => s.schoolId === schoolId)
+                      .map(s => s.id);
+
+                    // 1. Delete payments and notifications for these students
+                    const payments = localDb.getAll('payments');
+                    payments.forEach(p => {
+                      if (schoolStudentIds.includes(p.studentId)) localDb.delete('payments', p.id);
+                    });
+
+                    const notifications = localDb.getAll('parentNotifications');
+                    notifications.forEach(n => {
+                      if (schoolStudentIds.includes(n.studentId)) localDb.delete('parentNotifications', n.id);
+                    });
+
+                    // 2. Delete staff payments and invoices
+                    const staffPayments = localDb.getAll('staffPayments');
+                    staffPayments.forEach(sp => {
+                      if (schoolStaffIds.includes(sp.staffId)) localDb.delete('staffPayments', sp.id);
+                    });
+
+                    const staffInvoices = localDb.getAll('staffInvoices');
+                    staffInvoices.forEach(si => {
+                      if (schoolStaffIds.includes(si.staffId)) localDb.delete('staffInvoices', si.id);
+                    });
+
+                    // 3. Delete collections with schoolId
+                    const collectionsWithSchoolId = [
+                      'students', 'staff', 'expenses', 'manualLedgerConfigs', 
+                      'manualLedgerEntries', 'expenseCategories', 'attendanceRecords', 
+                      'investorPayments', 'whatsAppSettings', 'whatsAppTemplates', 'holidays'
+                    ] as const;
+
+                    collectionsWithSchoolId.forEach(col => {
+                      const items = localDb.getAll(col as any);
+                      items.forEach((item: any) => {
+                        if (item.schoolId === schoolId) localDb.delete(col as any, item.id);
+                      });
+                    });
+
+                    // 4. Delete the school itself
+                    localDb.delete('schools', schoolId);
+                    
+                    // Update state
+                    const remainingSchools = schools.filter(s => s.id !== schoolId);
+                    setSelectedSchoolId(remainingSchools.length > 0 ? remainingSchools[0].id : null);
+                    setShowDeleteConfirm(false);
+                    setShowEditSchool(false);
+                  }}
+                  className="w-full bg-rose-600 text-white py-6 rounded-2xl font-black text-xl hover:bg-rose-700 shadow-2xl shadow-rose-200 transition-all active:scale-95 flex items-center justify-center gap-3"
+                >
+                  <Trash2 className="w-6 h-6" />
+                  تأكيد الحذف النهائي
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="w-full bg-slate-100 text-slate-600 py-6 rounded-2xl font-black text-xl hover:bg-slate-200 transition-all shadow-sm"
+                >
+                  إلغاء الإجراء
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
+      
       <BackgroundBot />
+      <ToastContainer />
     </div>
   );
 }

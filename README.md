@@ -1,20 +1,20 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# نظام المحاسبة المدرسي الاحترافي
 
-# Run and deploy your AI Studio app
+هذا المشروع هو نظام متكامل لإدارة المدارس، مبني باستخدام React للمنصة الأساسية و Streamlit للتحليلات البيانية.
 
-This contains everything you need to run your app locally.
+## منصة React (الأساسية)
+تستخدم للإدارة اليومية:
+- إدارة الطلاب والكادر.
+- المحاسبة والمدفوعات.
+- الباركود والواتساب.
 
-View your app in AI Studio: https://ai.studio/apps/c2422aed-2357-455f-bbb3-a4cfc595e7e9
+**التشغيل:** `npm run dev`
 
-## Run Locally
+## منصة Streamlit (التحليلات)
+تستخدم لعرض تقارير بيانية متقدمة من ملفات النسخة الاحتياطية.
+تم إضافة ملف `streamlit_app.py` لجعل النظام متوافقاً مع الاستضافة على منصة Streamlit Cloud.
 
-**Prerequisites:**  Node.js
+**التشغيل:** `streamlit run streamlit_app.py`
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## المتطلبات (Streamlit)
+موجودة في ملف `requirements.txt`.

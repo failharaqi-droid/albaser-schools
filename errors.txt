@@ -1,0 +1,48 @@
+src/components/AttendanceManager.tsx(153,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(194,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(210,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(227,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(232,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(251,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(266,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(352,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(456,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(464,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(501,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(527,4): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(527,34): error TS1005: ';' expected.
+src/components/AttendanceManager.tsx(592,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(728,3): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(739,11): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(741,2): error TS1005: 'try' expected.
+src/components/AttendanceManager.tsx(770,4): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(770,69): error TS1005: ';' expected.
+src/components/AttendanceManager.tsx(1279,20): error TS1109: Expression expected.
+src/components/AttendanceManager.tsx(1280,17): error TS1109: Expression expected.
+src/components/AttendanceManager.tsx(2219,1): error TS1005: '}' expected.
+src/components/BackgroundBot.tsx(162,1): error TS1005: '}' expected.
+src/components/ExpensesManager.tsx(107,3): error TS1128: Declaration or statement expected.
+src/components/ExpensesManager.tsx(133,3): error TS1005: ',' expected.
+src/components/ExpensesManager.tsx(154,3): error TS1128: Declaration or statement expected.
+src/components/ExpensesManager.tsx(159,3): error TS1128: Declaration or statement expected.
+src/components/ExpensesManager.tsx(177,3): error TS1005: ',' expected.
+src/components/ExpensesManager.tsx(195,3): error TS1005: ',' expected.
+src/components/ExpensesManager.tsx(216,3): error TS1005: ',' expected.
+src/components/ExpensesManager.tsx(961,1): error TS1005: '}' expected.
+src/components/IDCardManager.tsx(155,3): error TS1128: Declaration or statement expected.
+src/components/IDCardManager.tsx(181,3): error TS1136: Property assignment expected.
+src/components/IDCardManager.tsx(799,12): error TS1128: Declaration or statement expected.
+src/components/IDCardManager.tsx(805,1): error TS1005: '}' expected.
+src/components/ManualLedgerManager.tsx(87,3): error TS1128: Declaration or statement expected.
+src/components/ManualLedgerManager.tsx(92,3): error TS1128: Declaration or statement expected.
+src/components/ManualLedgerManager.tsx(603,1): error TS1005: '}' expected.
+src/components/PaymentModal.tsx(461,1): error TS1005: '}' expected.
+src/components/PaymentProcessor.tsx(142,3): error TS1128: Declaration or statement expected.
+src/components/PaymentProcessor.tsx(672,1): error TS1005: '}' expected.
+src/components/SetupWizard.tsx(278,1): error TS1005: '}' expected.
+src/components/StaffManager.tsx(118,3): error TS1005: ',' expected.
+src/components/StaffManager.tsx(135,3): error TS1005: ',' expected.
+src/components/StaffManager.tsx(1235,1): error TS1005: '}' expected.
+src/components/UnpaidList.tsx(642,1): error TS1005: '}' expected.
+src/components/WhatsAppBotManager.tsx(201,3): error TS1005: ',' expected.
+src/components/WhatsAppBotManager.tsx(1167,1): error TS1005: '}' expected.

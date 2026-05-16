@@ -1,0 +1,43 @@
+100:    emptyColumns: 4, // Default number of empty columns
+101:    columnTitles: ['', '', '', ''], // Custom titles for empty columns
+161:    setCurrentPage(1); // Reset to first page on search/filter
+182:    // Group all students by grade
+190:    // Sort each group alphabetically and assign sequence
+334:      // Send Welcome Message
+377:      // Also delete payments for this student
+382:      // Also delete attendance records for this student
+387:      // Close profile if it was open for this student
+441:    // Calculate alerts/summons/warnings count based on the business logic applied earlier
+507:    // Calculate remaining and send notification
+553:    // Sort students by grade then by name
+574:    // Set column widths
+576:      { wch: 5 },  // ت
+577:      { wch: 35 }, // اسم الطالب
+578:      { wch: 25 }, // الصف
+579:      { wch: 15 }, // المبلغ الكلي
+580:      { wch: 30 }, // اسم ولي الأمر
+581:      { wch: 15 }  // رقم الهاتف
+589:    // Sort students by grade then by name
+608:    // Add BOM for Excel character recognition (UTF-8)
+833:                    {/* Hover Preview */}
+917:      {/* Pagination Controls */}
+1049:      {/* High Absence Modal */}
+1210:      {/* Student Profile Modal */}
+1303:                      {/* Financial Status Quick View */}
+1334:                      {/* Attendance Stats Quick View */}
+1368:                          {/* Alert if needed */}
+1395:                      {/* Comprehensive Status */}
+1599:                  {/* Personal Information */}
+1649:                  {/* Contact Information */}
+1685:                  {/* Financial & Access Information */}
+1744:                                 accept="image/*"
+1775:                {/* Submit Section (Floating) */}
+1842:                {/* Filters Sidebar */}
+1933:                {/* Main Content Area */}
+1935:                  {/* Alphabetic Letter Filter Bar */}
+2216:      {/* Hidden Printable Content */}
+2219:          {/* Official Header */}
+2248:          {/* Main Table */}
+2282:              {/* Add blank rows for late manual additions if needed */}
+2296:          {/* Footer / Signatures Area */}
+2356:                                 {/* Filler rows to keep table size consistent if desired or needed */}

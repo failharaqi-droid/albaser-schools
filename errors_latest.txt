@@ -1,0 +1,26 @@
+src/components/AttendanceManager.tsx(506,39): error TS1005: ',' expected.
+src/components/AttendanceManager.tsx(507,7): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(533,4): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(533,34): error TS1005: ';' expected.
+src/components/AttendanceManager.tsx(733,15): error TS1005: ',' expected.
+src/components/AttendanceManager.tsx(734,7): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(745,11): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(747,2): error TS1005: 'try' expected.
+src/components/AttendanceManager.tsx(776,4): error TS1128: Declaration or statement expected.
+src/components/AttendanceManager.tsx(776,69): error TS1005: ';' expected.
+src/components/AttendanceManager.tsx(1285,20): error TS1109: Expression expected.
+src/components/AttendanceManager.tsx(1286,17): error TS1109: Expression expected.
+src/components/AttendanceManager.tsx(2225,1): error TS1005: '}' expected.
+src/components/BackgroundBot.tsx(162,1): error TS1005: '}' expected.
+src/components/ExpensesManager.tsx(961,1): error TS1005: '}' expected.
+src/components/IDCardManager.tsx(799,12): error TS1128: Declaration or statement expected.
+src/components/IDCardManager.tsx(805,1): error TS1005: '}' expected.
+src/components/ManualLedgerManager.tsx(603,1): error TS1005: '}' expected.
+src/components/PaymentModal.tsx(461,1): error TS1005: '}' expected.
+src/components/SetupWizard.tsx(278,1): error TS1005: '}' expected.
+src/components/StaffManager.tsx(1235,1): error TS1005: '}' expected.
+src/components/UnpaidList.tsx(642,1): error TS1005: '}' expected.
+src/components/WhatsAppBotManager.tsx(254,125): error TS1005: ',' expected.
+src/components/WhatsAppBotManager.tsx(256,105): error TS1005: ',' expected.
+src/components/WhatsAppBotManager.tsx(261,87): error TS1005: ',' expected.
+src/components/WhatsAppBotManager.tsx(1167,1): error TS1005: '}' expected.

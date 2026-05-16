@@ -11,7 +11,8 @@ import {
   ArrowLeftRight,
   History,
   MessageSquare,
-  Printer
+  Printer,
+  Phone
 } from 'lucide-react';
 import { formatCurrency, numberToArabicWords } from '../lib/utils';
 import { format } from 'date-fns';
@@ -24,15 +25,16 @@ interface PaymentModalProps {
   payments: Payment[];
   onClose: () => void;
   onSuccess?: () => void;
+  initialPayment?: Payment;
 }
 
-export default function PaymentModal({ student, school, payments, onClose, onSuccess }: PaymentModalProps) {
+export default function PaymentModal({ student, school, payments, onClose, onSuccess, initialPayment }: PaymentModalProps) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'cash' | 'bank' | 'zain_cash' | 'other'>('cash');
   const [note, setNote] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [lastPayment, setLastPayment] = useState<Payment | null>(null);
-  const [showReceipt, setShowReceipt] = useState(false);
+  const [lastPayment, setLastPayment] = useState<Payment | null>(initialPayment || null);
+  const [showReceipt, setShowReceipt] = useState(!!initialPayment);
   const [autoPrint, setAutoPrint] = useState(school.autoPrintReceipt ?? true);
 
   const toggleAutoPrint = () => {
@@ -119,159 +121,95 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
   };
 
   return (
-    <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-gray-900/40 backdrop-blur-md"
-      />
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className={`bg-white w-full rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden flex flex-col ${showReceipt ? 'max-w-4xl max-h-[90vh]' : 'max-w-2xl'}`}
-      >
+    <div className="integrated-page">
+      <div className="modal-content">
         {!showReceipt ? (
           <>
-            <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-white relative z-20">
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-blue-100">
-                  <CreditCard className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-gray-900">دفعة جديدة</h3>
-                  <p className="text-xs font-bold text-gray-400 mt-0.5">تسجيل قسط مدرسي جديد</p>
-                </div>
+            <div className="p-10 border-b border-gray-100 flex flex-col items-center justify-center text-center gap-2 bg-white sticky top-0 z-20">
+              <div className="bg-blue-600 p-5 rounded-[1.8rem] text-white shadow-xl shadow-blue-100 transform -rotate-3 mb-2">
+                <CreditCard className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gray-900">نافذة الدفع</h3>
+                <p className="text-xs font-bold text-gray-400 mt-2 uppercase tracking-widest leading-relaxed px-4">تسجيل قسط مدرسي جديد ومعالجة الدفعة بشكل آمن</p>
               </div>
               <button 
                 onClick={onClose}
-                className="p-3 hover:bg-gray-100 rounded-2xl transition-all text-gray-400 hover:text-red-500"
+                className="absolute top-4 left-6 p-3 bg-slate-50 hover:bg-rose-50 rounded-2xl transition-all text-slate-400 hover:text-rose-600"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-8 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-8">
-              {/* Student Info Card */}
-              <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 flex items-center gap-4">
-                {student.photo ? (
-                  <img src={student.photo} alt={student.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-sm" />
-                ) : (
-                  <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
-                    <User className="w-8 h-8" />
-                  </div>
-                )}
-                <div className="flex-1">
-                  <h4 className="text-xl font-black text-gray-900">{student.name}</h4>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md uppercase">{student.grade}</span>
-                    <span className="text-xs text-gray-500 font-bold">{student.phone}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Account Stats */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                  <p className="text-[10px] text-gray-400 font-black mb-1">المبلغ الكلي</p>
-                  <p className="text-lg font-black text-gray-900">{formatCurrency(student.totalAmount)}</p>
-                </div>
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                  <p className="text-[10px] text-emerald-600 font-black mb-1">إجمالي الواصل</p>
-                  <p className="text-lg font-black text-emerald-700">{formatCurrency(totalPaid)}</p>
-                </div>
-                <div className="bg-red-50/50 p-4 rounded-2xl border border-red-100/50">
-                  <p className="text-[10px] text-red-500 font-black mb-1">المتبقي</p>
-                  <p className="text-lg font-black text-red-600">{formatCurrency(remaining)}</p>
-                </div>
-                <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100/50">
-                  <p className="text-[10px] text-blue-600 font-black mb-1">آخر تسديد</p>
-                  <p className="text-lg font-black text-blue-700">
-                    {studentPayments.length > 0 ? formatCurrency(studentPayments[0].amount) : 'لا يوجد'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Payment Form */}
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <div className="flex justify-between items-center mb-2 px-2">
-                      <label className="block text-sm font-black text-gray-700">مغ الدفعة</label>
-                      {remaining > 0 && (
-                        <button 
-                          onClick={() => setAmount(remaining.toString())}
-                          className="text-[10px] font-black text-blue-600 hover:underline"
-                        >
-                          دفع المتبقي بالكامل
-                        </button>
-                      )}
+            <div className="flex-1 flex flex-col items-center justify-center p-10 bg-slate-50">
+              <div className="w-full max-w-5xl space-y-12 flex flex-col items-center">
+                {/* Student Info Card - Centered full width */}
+                <div className="w-full bg-white p-4 rounded-[2rem] border border-slate-200 shadow-sm flex flex-row items-center justify-center gap-3 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-full h-1 bg-blue-600 opacity-20"></div>
+                  {student.photo ? (
+                    <img src={student.photo} alt={student.name} className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-lg" />
+                  ) : (
+                    <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
+                      <User className="w-10 h-10" />
                     </div>
-                    <input
-                      ref={amountInputRef}
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-2xl font-black focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                      placeholder="0.00"
-                    />
-                  </div>
+                  )}
                   <div>
-                    <label className="block text-sm font-black text-gray-700 mb-2 px-2">طريقة الدفع</label>
-                    <select
-                      value={method}
-                      onChange={(e) => setMethod(e.target.value as any)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-lg font-black outline-none focus:ring-4 focus:ring-blue-100 appearance-none"
-                    >
-                      <option value="cash">نقداً</option>
-                      <option value="bank">تحويل بنكي</option>
-                      <option value="zain_cash">زين كاش</option>
-                      <option value="other">أخرى</option>
-                    </select>
+                    <h4 className="text-lg font-black text-gray-900 mb-1">{student.name}</h4>
+                    <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase tracking-wider">{student.grade}</span>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-black text-gray-700 mb-2 px-2">ملاحظات إضافية (اختياري)</label>
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100 min-h-[100px]"
-                    placeholder="مثال: دفع القسط الثالث لشهر نيسان"
-                  />
+                {/* Form Section */}
+                <div className="w-full bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-lg space-y-2 flex flex-col flex-1">
+                  <div className="flex flex-row justify-between w-full h-full gap-3">
+                    <div className="flex-1 space-y-2 flex flex-col">
+                      <label className="text-xl font-black text-slate-500 uppercase tracking-widest block text-right w-full">المبلغ المطلوب دفعه</label>
+                      <input
+                        ref={amountInputRef}
+                        type="number"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        className="w-full flex-1 bg-slate-50 border border-slate-200 rounded-[1.5rem] px-8 py-8 text-6xl font-black focus:ring-8 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all text-center text-blue-900 mt-0"
+                        placeholder="0"
+                      />
+                    </div>
+                    
+                    <div className="flex-1 space-y-2 flex flex-col">
+                      <label className="text-xl font-black text-slate-500 uppercase tracking-widest block text-right w-full">طريقة الدفع</label>
+                      <select
+                        value={method}
+                        onChange={(e) => setMethod(e.target.value as any)}
+                        className="w-full flex-1 bg-slate-50 border border-slate-200 rounded-[1.5rem] px-8 py-8 text-4xl font-black outline-none focus:ring-8 focus:ring-blue-100 text-center text-slate-700"
+                      >
+                        <option value="cash">نقداً</option>
+                        <option value="bank">تحويل بنكي</option>
+                        <option value="zain_cash">زين كاش</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={processPayment}
+                    disabled={!amount || isProcessing}
+                    className="w-full bg-blue-600 text-white py-10 rounded-[2.5rem] font-black text-4xl hover:bg-blue-700 shadow-xl shadow-blue-200 disabled:opacity-50 transition-all active:scale-[0.98] flex items-center justify-center gap-3 mt-10"
+                  >
+                    {isProcessing ? (
+                      <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-6 h-6" />
+                        تأكيد الدفع
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
-            </div>
-
-            <div className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4">
-              <button
-                onClick={onClose}
-                className="flex-1 bg-white text-gray-500 py-5 rounded-[2rem] font-black border border-gray-200 hover:bg-gray-100 transition-all active:scale-[0.98]"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={processPayment}
-                disabled={!amount || isProcessing}
-                className="flex-[2] bg-blue-600 text-white py-5 rounded-[2rem] font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 disabled:opacity-50 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
-              >
-                {isProcessing ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-6 h-6" />
-                    تأكيد واستلام المبلغ
-                  </>
-                )}
-              </button>
             </div>
           </>
         ) : (
-          <div className="flex flex-col md:flex-row h-full overflow-hidden">
+          <div className="flex flex-col md:flex-row h-full overflow-hidden bg-slate-900">
             {/* Receipt Content Area */}
-            <div className="flex-1 overflow-y-auto p-8 bg-gray-100/50 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-12 lg:p-24 custom-scrollbar w-full bg-slate-900/50 flex justify-center items-start custom-scrollbar">
               <style>
                 {`
                   @media print {
@@ -281,8 +219,7 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
                     .receipt-header-print {
                       background-color: ${school.receiptHeaderColor || '#f3f4f6'} !important;
                       -webkit-print-color-adjust: exact;
-                    }
-                  }
+
                 `}
               </style>
               <div 
@@ -298,14 +235,14 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
                   className="flex justify-between items-start mb-8 border-b-2 border-gray-900 pb-6 px-4 -mx-4 rounded-t-2xl receipt-header-print"
                   style={{ backgroundColor: school.receiptHeaderColor || '#f3f4f6' }}
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
                     {school.logo ? (
-                      <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-gray-100">
+                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-gray-100">
                         <img src={school.logo} alt="School Logo" className="w-full h-full object-contain" />
                       </div>
                     ) : (
-                      <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center text-white">
-                        <CreditCard className="w-8 h-8" />
+                      <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+                        <CreditCard className="w-6 h-6" />
                       </div>
                     )}
                     <div>
@@ -317,19 +254,22 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
                     <p className="text-[10px] font-black opacity-50 mb-1">رقم الوصل</p>
                     <p className="text-xs font-black font-mono">#{lastPayment?.id.slice(-6).toUpperCase()}</p>
                     <p className="text-[10px] font-bold opacity-50 mt-1">{format(new Date(lastPayment?.date || new Date()), 'yyyy/MM/dd')}</p>
+                    {school.academicYear && (
+                      <p className="text-[10px] font-bold opacity-50 mt-1">العام الدراسي: {school.academicYear}</p>
+                    )}
                   </div>
                 </div>
 
                 {/* Body Content */}
-                <div className="space-y-6 mb-8 py-2">
+                <div className="space-y-2 mb-8 py-2">
                    <div className="relative border-b border-gray-100 pb-2">
                       <span className="absolute -top-2.5 right-2 bg-white px-1 text-[8px] font-black opacity-40">الاسم</span>
                       <p className="text-lg font-black pr-2">{student.name}</p>
                    </div>
-                   <div className="flex gap-4">
+                   <div className="flex gap-2">
                       <div className="flex-1 relative border-b border-gray-100 pb-2">
                          <span className="absolute -top-2.5 right-2 bg-white px-1 text-[8px] font-black opacity-40">المبلغ</span>
-                         <p className="text-2xl font-black text-blue-600 pr-2">{formatCurrency(lastPayment?.amount || 0)}</p>
+                         <p className="text-lg font-black text-blue-600 pr-2">{formatCurrency(lastPayment?.amount || 0)}</p>
                       </div>
                       <div className="flex-1 relative border-b border-gray-100 pb-2">
                          <span className="absolute -top-2.5 right-2 bg-white px-1 text-[8px] font-black opacity-40">المبلغ كتابةً</span>
@@ -342,7 +282,7 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
                    </div>
                 </div>
 
-                {school.showPreviousPayments && studentPayments.length > 1 && (
+                {studentPayments.length > 1 && (
                   <div className="mb-8">
                     <h4 className="text-[10px] font-black mb-3 opacity-60 flex items-center gap-2">
                        <History className="w-3 h-3" />
@@ -371,7 +311,7 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
                   </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="grid grid-cols-3 gap-2 mb-8">
                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-center">
                       <p className="text-[8px] font-black opacity-40 mb-1">الإجمالي</p>
                       <p className="text-xs font-black">{formatCurrency(student.totalAmount)}</p>
@@ -391,7 +331,7 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
                 </div>
 
                 <div className="flex justify-between items-end pt-4">
-                  <div className="flex gap-4">
+                  <div className="flex gap-2">
                     <div className="text-center">
                       {stampConfig.showQRCode && (
                         <div className="flex flex-col items-center">
@@ -424,13 +364,13 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
             </div>
 
             {/* Sidebar Actions */}
-            <div className="w-full md:w-64 bg-white border-r border-gray-100 p-6 flex flex-col gap-4">
+            <div className="w-full md:w-64 bg-white border-r border-gray-100 p-4 flex flex-col gap-2">
               <button onClick={onClose} className="p-3 hover:bg-red-50 text-red-500 rounded-xl transition-all flex items-center justify-center gap-2 self-start mb-4">
                 <X className="w-5 h-5" />
                 <span className="font-bold text-sm">إغلاق</span>
               </button>
 
-              <div className="space-y-4">
+              <div className="space-y-2">
                 <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-[10px] font-black text-indigo-600 uppercase">طباعة تلقائية</p>
@@ -459,7 +399,7 @@ export default function PaymentModal({ student, school, payments, onClose, onSuc
             </div>
           </div>
         )}
-      </motion.div>
+      </div>
     </div>
-  );
+    );
 }

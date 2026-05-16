@@ -19,6 +19,7 @@ import { formatCurrency } from '../lib/utils';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfYear, endOfYear } from 'date-fns';
 import { useReactToPrint } from 'react-to-print';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import { toast } from './Toast';
 
 interface ReportsProps {
   school: School;
@@ -32,7 +33,7 @@ interface ReportsProps {
 }
 
 export default function Reports({ school, students, payments, staff, staffPayments, staffInvoices, expenses, investorPayments }: ReportsProps) {
-  const [reportType, setReportType] = useState<'monthly' | 'quarterly' | 'yearly' | 'custom' | 'studentBalances' | 'financialSummary' | 'studentDebtAnalysis' | 'debtLedger'>('monthly');
+  const [reportType, setReportType] = useState<'monthly' | 'quarterly' | 'yearly' | 'custom' | 'studentBalances' | 'financialSummary' | 'studentDebtAnalysis' | 'debtLedger' | 'registrationSummary'>('monthly');
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM'));
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -130,7 +131,7 @@ export default function Reports({ school, students, payments, staff, staffPaymen
     }
 
     if (dataToExport.length === 0) {
-      alert("لا توجد بيانات لتصديرها");
+      toast.info("لا توجد بيانات لتصديرها");
       return;
     }
 
@@ -264,6 +265,24 @@ export default function Reports({ school, students, payments, staff, staffPaymen
       { name: 'عامة', value: totalGeneralExpenses, color: '#10b981' }
     ];
 
+    const registrationSummary = Object.values(
+      filteredStudents.reduce((acc, s) => {
+        const key = s.totalAmount.toString();
+        if (!acc[key]) {
+          acc[key] = { amount: s.totalAmount, count: 0, totalDue: 0, totalPaid: 0 };
+        }
+        acc[key].count += 1;
+        acc[key].totalDue += s.totalAmount;
+        
+        const studentPaid = (payments || [])
+          .filter(p => p.studentId === s.id)
+          .reduce((sum, p) => sum + p.amount, 0);
+        acc[key].totalPaid += studentPaid;
+        
+        return acc;
+      }, {} as Record<string, { amount: number; count: number; totalDue: number; totalPaid: number }>)
+    ).sort((a, b) => b.amount - a.amount);
+
     return {
       income: totalIncome,
       expenses: totalExpenses,
@@ -276,16 +295,17 @@ export default function Reports({ school, students, payments, staff, staffPaymen
       studentBalances,
       pieData,
       expenseByCategory,
-      gradePerformance
+      gradePerformance,
+      registrationSummary
     };
   }, [reportType, selectedDate, startDate, endDate, payments, staffPayments, staffInvoices, expenses, students, paymentMethodFilter, selectedGrade, grades]);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-wrap items-center justify-between gap-6">
-        <div className="flex items-center gap-6">
+    <div className="space-y-2 animate-in fade-in duration-700">
+      <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
         <div className="flex bg-gray-100 p-1 rounded-2xl overflow-x-auto max-w-full no-scrollbar shadow-inner border border-gray-200/50">
-            {(['monthly', 'quarterly', 'yearly', 'custom', 'studentBalances', 'debtLedger', 'financialSummary', 'studentDebtAnalysis'] as const).map(type => (
+            {(['monthly', 'quarterly', 'yearly', 'custom', 'studentBalances', 'debtLedger', 'financialSummary', 'studentDebtAnalysis', 'registrationSummary'] as const).map(type => (
               <button
                 key={type}
                 onClick={() => setReportType(type)}
@@ -299,7 +319,8 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                  type === 'studentBalances' ? 'ديون الطلاب' : 
                  type === 'debtLedger' ? 'سجل ذمم الطلاب (الختامي)' :
                  type === 'financialSummary' ? 'ملخص مالي فئوي' :
-                 type === 'studentDebtAnalysis' ? 'أداء المديونيات' : 'مخصص'}
+                 type === 'studentDebtAnalysis' ? 'أداء المديونيات' :
+                 type === 'registrationSummary' ? 'الوارد الكلي للتسجيل' : 'مخصص'}
               </button>
             ))}
           </div>
@@ -378,27 +399,27 @@ export default function Reports({ school, students, payments, staff, staffPaymen
       </div>
 
       {reportType !== 'studentBalances' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-emerald-50 p-8 rounded-3xl border border-emerald-100">
-            <div className="flex items-center gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-emerald-50 p-5 rounded-3xl border border-emerald-100">
+            <div className="flex items-center gap-2 mb-4">
               <div className="bg-emerald-600 p-3 rounded-2xl text-white">
                 <TrendingUp className="w-6 h-6" />
               </div>
               <h4 className="font-black text-emerald-900">إجمالي الإيرادات</h4>
             </div>
-            <p className="text-3xl font-black text-emerald-700">{formatCurrency(reportData.income)}</p>
+            <p className="text-lg font-black text-slate-900 tracking-tight text-emerald-700">{formatCurrency(reportData.income)}</p>
             <p className="text-xs text-emerald-600 mt-2 font-bold">{reportData.paymentCount} دفعة مستلمة</p>
           </div>
 
-          <div className="bg-red-50 p-8 rounded-3xl border border-red-100">
-            <div className="flex items-center gap-4 mb-4">
+          <div className="bg-red-50 p-5 rounded-3xl border border-red-100">
+            <div className="flex items-center gap-2 mb-4">
               <div className="bg-red-600 p-3 rounded-2xl text-white">
                 <TrendingDown className="w-6 h-6" />
               </div>
               <h4 className="font-black text-red-900">إجمالي المصاريف</h4>
             </div>
-            <p className="text-3xl font-black text-red-700">{formatCurrency(reportData.expenses)}</p>
-            <div className="flex flex-wrap gap-4 mt-2">
+            <p className="text-lg font-black text-slate-900 tracking-tight text-red-700">{formatCurrency(reportData.expenses)}</p>
+            <div className="flex flex-wrap gap-2 mt-2">
                <p className="text-xs text-red-600 font-bold">الرواتب: {formatCurrency(reportData.salaries)}</p>
                <p className="text-xs text-red-600 font-bold">الفواتير: {formatCurrency(reportData.invoices)}</p>
                <p className="text-xs text-red-600 font-bold">المسلم للمستثمر: {formatCurrency((reportData.pieData || []).find(d => d.name === 'مسلم للمستثمر')?.value || 0)}</p>
@@ -406,21 +427,21 @@ export default function Reports({ school, students, payments, staff, staffPaymen
             </div>
           </div>
 
-          <div className={`p-8 rounded-3xl border ${reportData.net >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
-            <div className="flex items-center gap-4 mb-4">
+          <div className={`p-5 rounded-3xl border ${reportData.net >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
+            <div className="flex items-center gap-2 mb-4">
               <div className={`${reportData.net >= 0 ? 'bg-blue-600' : 'bg-orange-600'} p-3 rounded-2xl text-white`}>
                 <FileText className="w-6 h-6" />
               </div>
               <h4 className={`font-black ${reportData.net >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>صافي الربح</h4>
             </div>
-            <p className={`text-3xl font-black ${reportData.net >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>{formatCurrency(reportData.net)}</p>
+            <p className={`text-lg font-black text-slate-900 tracking-tight ${reportData.net >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>{formatCurrency(reportData.net)}</p>
           </div>
         </div>
       )}
 
       {reportType !== 'studentBalances' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
             <h4 className="text-xl font-black mb-8 flex items-center gap-2">
               <PieChartIcon className="text-blue-600 w-6 h-6" />
               توزيع المصاريف
@@ -450,12 +471,12 @@ export default function Reports({ school, students, payments, staff, staffPaymen
             </div>
           </div>
 
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
              <h4 className="text-xl font-black mb-8 flex items-center gap-2">
               <TrendingUp className="text-emerald-600 w-6 h-6" />
               ملخص مالي سريع
             </h4>
-            <div className="space-y-6">
+            <div className="space-y-2">
                <div className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl">
                  <span className="font-bold text-gray-500">إجمالي السيولة (الدخل)</span>
                  <span className="text-xl font-black text-emerald-600">{formatCurrency(reportData.income)}</span>
@@ -464,9 +485,9 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                  <span className="font-bold text-gray-500">إجمالي الالتزامات (المصاريف)</span>
                  <span className="text-xl font-black text-red-600">{formatCurrency(reportData.expenses)}</span>
                </div>
-               <div className="flex justify-between items-center bg-blue-600 p-6 rounded-2xl text-white shadow-xl shadow-blue-100">
+               <div className="flex justify-between items-center bg-blue-600 p-4 rounded-2xl text-white shadow-xl shadow-blue-100">
                  <span className="text-lg font-black italic underline-offset-8 underline decoration-blue-300">الربح الصافي للفترة</span>
-                 <span className="text-2xl font-black">{formatCurrency(reportData.net)}</span>
+                 <span className="text-lg font-black">{formatCurrency(reportData.net)}</span>
                </div>
             </div>
           </div>
@@ -476,15 +497,15 @@ export default function Reports({ school, students, payments, staff, staffPaymen
       <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
         {/* Preview Modal */}
         {showPreview && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
-              <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
-                <div className="flex items-center gap-4">
+          <div className="integrated-page z-[300] no-scrollbar">
+            <div className="modal-content">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-2">
                   <div className="bg-blue-50 p-3 rounded-2xl text-blue-600">
                     <Printer className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-gray-900">
+                    <h3 className="text-lg font-black text-gray-900">
                       {reportType === 'debtLedger' ? 'معاينة سجل الديون الختامي' : 'معاينة التقرير النهائي'}
                     </h3>
                     <p className="text-gray-500 font-bold">يمكنك المراجعة النهائية قبل بدء عملية الطباعة</p>
@@ -493,7 +514,7 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => handlePrint()}
-                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-900/20 hover:bg-blue-700 transition-all flex items-center gap-3"
+                    className="bg-blue-600 text-white px-8 py-2 rounded-2xl font-black shadow-xl shadow-blue-900/20 hover:bg-blue-700 transition-all flex items-center gap-3"
                   >
                     <Printer className="w-5 h-5" />
                     تأكيد الطباعة
@@ -507,12 +528,17 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                 </div>
               </div>
               
-              <div className="p-12 overflow-y-auto bg-gray-50/50 flex justify-center">
-                <div className="bg-white p-12 shadow-2xl rounded-sm shadow-slate-200/50 border border-gray-100" style={{ width: '210mm', minHeight: '297mm' }}>
+              <div className="p-4 overflow-y-auto bg-gray-50/50 flex justify-center">
+                <div className="bg-white p-4 shadow-2xl rounded-sm shadow-slate-200/50 border border-gray-100" style={{ width: '210mm', minHeight: '297mm' }}>
                   <div ref={reportRef} className="p-4 text-right" dir="rtl">
-                    <div className="text-center mb-12 border-b-4 border-blue-900 pb-8">
+                    <div className="text-center mb-12 border-b-4 border-blue-900 pb-4">
+                      {school.logo && (
+                        <div className="flex justify-center mb-4">
+                          <img src={school.logo} alt="شعار المدرسة" className="h-24 object-contain" />
+                        </div>
+                      )}
                       <h2 className="text-4xl font-black text-blue-950 mb-2">{school.name}</h2>
-                      <h3 className="text-2xl font-black text-blue-700">
+                      <h3 className="text-lg font-black text-blue-700">
                       {reportType === 'studentBalances' ? 'تقرير مديونية الطلاب الإجمالي' : 
                        reportType === 'debtLedger' ? 'سجل تبرئة ذمة الطلاب (الختامي)' :
                        reportType === 'financialSummary' ? 'التقرير المالي الشامل المبوب' :
@@ -526,7 +552,7 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                     </div>
 
                     {reportType === 'debtLedger' ? (
-                      <div className="space-y-12">
+                      <div className="space-y-2">
                         {Object.entries(
                           reportData.studentBalances.reduce((acc, s) => {
                             if (s.remaining <= 0) return acc;
@@ -537,7 +563,7 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                         ).sort((a, b) => a[0].localeCompare(b[0], 'ar')).map(([grade, gradeStudents]) => (
                           <div key={grade} style={{ pageBreakAfter: 'always' }} className="mb-12">
                             <div className="flex justify-between items-end mb-6 border-b-4 border-gray-900 pb-2">
-                              <h3 className="text-2xl font-black">
+                              <h3 className="text-lg font-black">
                                 سجل ديون الصف: {grade}
                               </h3>
                               <p className="font-bold text-gray-500">عدد الطلاب المسجلين: {gradeStudents.length}</p>
@@ -545,13 +571,13 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                             <table className="w-full border-collapse border-2 border-gray-900">
                               <thead>
                                 <tr className="bg-gray-100">
-                                  <th className="px-2 py-4 text-sm font-black border-2 border-gray-900 text-center w-12">ت</th>
-                                  <th className="px-4 py-4 text-sm font-black border-2 border-gray-900 text-center text-xs">اسم الطالب</th>
-                                  <th className="px-4 py-4 text-sm font-black border-2 border-gray-900 text-center text-xs">الصف</th>
-                                  <th className="px-1 py-4 text-sm font-black border-2 border-gray-900 text-center w-24">المبلغ الكلي</th>
-                                  <th className="px-1 py-4 text-sm font-black border-2 border-gray-900 text-center w-24">المسدد (الواصل)</th>
-                                  <th className="px-1 py-4 text-sm font-black border-2 border-gray-900 text-center w-24">المتبقي (الذمة)</th>
-                                  <th className="px-4 py-4 text-sm font-black border-2 border-gray-900 text-center">التوقيع والملاحظات</th>
+                                  <th className="px-2 py-2 text-sm font-black border-2 border-gray-900 text-center w-12">ت</th>
+                                  <th className="px-4 py-2 text-sm font-black border-2 border-gray-900 text-center text-xs">اسم الطالب</th>
+                                  <th className="px-4 py-2 text-sm font-black border-2 border-gray-900 text-center text-xs">الصف</th>
+                                  <th className="px-1 py-2 text-sm font-black border-2 border-gray-900 text-center w-24">المبلغ الكلي</th>
+                                  <th className="px-1 py-2 text-sm font-black border-2 border-gray-900 text-center w-24">المسدد (الواصل)</th>
+                                  <th className="px-1 py-2 text-sm font-black border-2 border-gray-900 text-center w-24">المتبقي (الذمة)</th>
+                                  <th className="px-4 py-2 text-sm font-black border-2 border-gray-900 text-center">التوقيع والملاحظات</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -597,26 +623,60 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                           </div>
                         ))}
                       </div>
+                    ) : reportType === 'registrationSummary' ? (
+                      <div className="space-y-4">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="bg-blue-900 text-white">
+                              <th className="px-4 py-3 text-sm font-black border border-blue-950 text-center w-32">مبلغ التسجيل</th>
+                              <th className="px-4 py-3 text-sm font-black border border-blue-950 text-center w-32">العدد</th>
+                              <th className="px-4 py-3 text-sm font-black border border-blue-950 text-center">المبلغ الكلي</th>
+                              <th className="px-4 py-3 text-sm font-black border border-blue-950 text-center">المدفوع (الوارد)</th>
+                              <th className="px-4 py-3 text-sm font-black border border-blue-950 text-center">الباقي (الديون)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reportData.registrationSummary.map((item, idx) => (
+                              <tr key={idx} className="border-b hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm font-black border border-gray-200 text-center text-blue-600 bg-blue-50/50">{formatCurrency(item.amount)}</td>
+                                <td className="px-4 py-3 text-sm font-bold border border-gray-200 text-center bg-gray-50">{item.count} طالباً</td>
+                                <td className="px-4 py-3 text-sm font-black border border-gray-200 text-center">{formatCurrency(item.totalDue)}</td>
+                                <td className="px-4 py-3 text-sm font-bold border border-gray-200 text-center text-emerald-600">{formatCurrency(item.totalPaid)}</td>
+                                <td className="px-4 py-3 text-sm font-black border border-gray-200 text-center text-red-600">{formatCurrency(item.totalDue - item.totalPaid)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-100 font-black border-t-4 border-gray-900">
+                              <td className="px-4 py-5 border border-gray-300 text-left text-2xl font-black text-gray-900">المبلغ الكلي للتسجيل</td>
+                              <td className="px-4 py-5 border border-gray-300 text-center text-2xl font-black">{reportData.registrationSummary.reduce((a, b) => a + b.count, 0)} طالباً</td>
+                              <td className="px-4 py-5 border border-gray-300 text-center text-2xl font-black">{formatCurrency(reportData.registrationSummary.reduce((a, b) => a + b.totalDue, 0))}</td>
+                              <td className="px-4 py-5 border border-gray-300 text-center text-2xl font-black text-emerald-600">{formatCurrency(reportData.registrationSummary.reduce((a, b) => a + b.totalPaid, 0))}</td>
+                              <td className="px-4 py-5 border border-gray-300 text-center text-2xl font-black text-red-600">{formatCurrency(reportData.registrationSummary.reduce((a, b) => a + (b.totalDue - b.totalPaid), 0))}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
                     ) : reportType === 'studentDebtAnalysis' ? (
-                      <div className="space-y-12">
+                      <div className="space-y-2">
                         <table className="w-full border-collapse">
                           <thead>
                             <tr className="bg-gray-900 text-white">
-                              <th className="px-4 py-4 text-sm font-black border text-center">الصف الدراسي</th>
-                              <th className="px-4 py-4 text-sm font-black border text-center">إجمالي المستحقات</th>
-                              <th className="px-4 py-4 text-sm font-black border text-center">المبالغ المحصلة</th>
-                              <th className="px-4 py-4 text-sm font-black border text-center">المبالغ المتبقية</th>
-                              <th className="px-4 py-4 text-sm font-black border text-center">نسبة التحصيل</th>
+                              <th className="px-4 py-2 text-sm font-black border text-center">الصف الدراسي</th>
+                              <th className="px-4 py-2 text-sm font-black border text-center">إجمالي المستحقات</th>
+                              <th className="px-4 py-2 text-sm font-black border text-center">المبالغ المحصلة</th>
+                              <th className="px-4 py-2 text-sm font-black border text-center">المبالغ المتبقية</th>
+                              <th className="px-4 py-2 text-sm font-black border text-center">نسبة التحصيل</th>
                             </tr>
                           </thead>
                           <tbody>
                             {reportData.gradePerformance.map((item, idx) => (
                               <tr key={idx} className="border-b hover:bg-gray-50">
-                                <td className="px-4 py-4 text-sm font-black border text-center bg-gray-50">{item.grade}</td>
-                                <td className="px-4 py-4 text-sm font-bold border text-center">{formatCurrency(item.totalDue)}</td>
-                                <td className="px-4 py-4 text-sm font-bold border text-center text-emerald-600">{formatCurrency(item.totalPaid)}</td>
-                                <td className="px-4 py-4 text-sm font-black border text-center text-red-600">{formatCurrency(item.totalRemaining)}</td>
-                                <td className="px-4 py-4 text-sm font-black border text-center underline decoration-blue-300 decoration-2">
+                                <td className="px-4 py-2 text-sm font-black border text-center bg-gray-50">{item.grade}</td>
+                                <td className="px-4 py-2 text-sm font-bold border text-center">{formatCurrency(item.totalDue)}</td>
+                                <td className="px-4 py-2 text-sm font-bold border text-center text-emerald-600">{formatCurrency(item.totalPaid)}</td>
+                                <td className="px-4 py-2 text-sm font-black border text-center text-red-600">{formatCurrency(item.totalRemaining)}</td>
+                                <td className="px-4 py-2 text-sm font-black border text-center underline decoration-blue-300 decoration-2">
                                   {item.percentage.toFixed(1)}%
                                 </td>
                               </tr>
@@ -636,9 +696,9 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                         </table>
                       </div>
                     ) : reportType === 'financialSummary' ? (
-                      <div className="space-y-12">
-                        <div className="grid grid-cols-2 gap-8">
-                          <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-2">
                             <h4 className="text-xl font-black bg-emerald-600 text-white p-3 rounded-xl flex items-center gap-2">
                               <TrendingUp className="w-5 h-5" />
                               تحليل الإيرادات
@@ -667,7 +727,7 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                             </div>
                           </div>
 
-                          <div className="space-y-4">
+                          <div className="space-y-2">
                             <h4 className="text-xl font-black bg-red-600 text-white p-3 rounded-xl flex items-center gap-2">
                               <TrendingDown className="w-5 h-5" />
                               تحليل المصروفات فئوياً
@@ -699,13 +759,27 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                           </div>
                         </div>
 
-                        <div className="bg-blue-600 p-8 rounded-3xl text-white text-center shadow-2xl shadow-blue-200">
+                        <div className="bg-blue-600 p-5 rounded-3xl text-white text-center shadow-2xl shadow-blue-200">
                           <p className="text-xl font-bold mb-2 opacity-80">صافي التدفق المالي للفترة</p>
                           <p className="text-5xl font-black">{formatCurrency(reportData.net)}</p>
                         </div>
 
+                        <div className="mt-8 grid grid-cols-2 gap-2">
+                           <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl text-center">
+                             <p className="text-emerald-800 font-black text-lg mb-2">المبلغ الكلي للتسجيل</p>
+                             <div className="flex flex-col items-center justify-center gap-2">
+                               <p className="text-3xl font-black text-emerald-600">{formatCurrency(reportData.registrationSummary.reduce((a, b) => a + b.totalDue, 0))}</p>
+                               <span className="text-lg font-black text-emerald-800 bg-emerald-100 px-4 py-1.5 rounded-full border-2 border-emerald-300 shadow-sm mt-1">العدد الكلي للطلاب: {reportData.registrationSummary.reduce((a, b) => a + b.count, 0)} طالب</span>
+                             </div>
+                           </div>
+                           <div className="bg-red-50 border border-red-200 p-5 rounded-2xl text-center flex flex-col justify-center">
+                             <p className="text-red-800 font-black text-lg mb-2">الديون المتبقية</p>
+                             <p className="text-3xl font-black text-red-600">{formatCurrency(reportData.studentBalances.reduce((sum, s) => sum + s.remaining, 0))}</p>
+                           </div>
+                        </div>
+
                         {investorPayments && investorPayments.length > 0 && (
-                          <div className="space-y-4 mt-8">
+                          <div className="space-y-2 mt-8">
                             <h4 className="text-xl font-black bg-blue-900 text-white p-3 rounded-xl flex items-center gap-2">
                               <TrendingDown className="w-5 h-5 text-red-100" />
                               سجل المسلم للمستثمرين (حسب الموثق إلكترونياً)
@@ -747,7 +821,7 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                         )}
                       </div>
                     ) : reportType === 'studentBalances' ? (
-                      <div className="space-y-12">
+                      <div className="space-y-2">
                         {Object.entries(
                           reportData.studentBalances.reduce((acc, s) => {
                             if (!acc[s.grade]) acc[s.grade] = [];
@@ -763,21 +837,21 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                             <table className="w-full border-collapse border border-blue-200">
                               <thead>
                                 <tr className="bg-blue-50 border-b-2 border-blue-600">
-                                  <th className="px-4 py-3 text-sm font-black border text-blue-900">ت</th>
-                                  <th className="px-4 py-3 text-sm font-black border text-right text-blue-900">اسم الطالب</th>
-                                  <th className="px-4 py-3 text-sm font-black border text-center text-blue-900">المبلغ الكلي</th>
-                                  <th className="px-4 py-3 text-sm font-black border text-center text-blue-900">المدفوع</th>
-                                  <th className="px-4 py-3 text-sm font-black border text-center text-blue-900">المتبقي</th>
+                                  <th className="px-3 py-1.5 min-h-[38px] text-sm font-black border text-blue-900">ت</th>
+                                  <th className="px-3 py-1.5 min-h-[38px] text-sm font-black border text-right text-blue-900">اسم الطالب</th>
+                                  <th className="px-3 py-1.5 min-h-[38px] text-sm font-black border text-center text-blue-900">المبلغ الكلي</th>
+                                  <th className="px-3 py-1.5 min-h-[38px] text-sm font-black border text-center text-blue-900">المدفوع</th>
+                                  <th className="px-3 py-1.5 min-h-[38px] text-sm font-black border text-center text-blue-900">المتبقي</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {gradeStudents.sort((a, b) => a.name.localeCompare(b.name, 'ar')).map((s, idx) => (
                                   <tr key={s.id} className="border-b hover:bg-blue-50/30">
-                                    <td className="px-4 py-3 text-sm font-bold border text-center text-gray-400">{idx + 1}</td>
-                                    <td className="px-4 py-3 text-sm font-black border text-gray-700">{s.name}</td>
-                                    <td className="px-4 py-3 text-sm font-bold border text-center">{formatCurrency(s.totalAmount)}</td>
-                                    <td className="px-4 py-3 text-sm font-bold border text-center text-emerald-600">{formatCurrency(s.paid)}</td>
-                                    <td className="px-4 py-3 text-sm font-black border text-center text-red-600 bg-red-50/20">{formatCurrency(s.remaining)}</td>
+                                    <td className="px-3 py-1.5 min-h-[38px] text-sm font-bold border text-center text-gray-400">{idx + 1}</td>
+                                    <td className="px-3 py-1.5 min-h-[38px] text-sm font-black border text-gray-700">{s.name}</td>
+                                    <td className="px-3 py-1.5 min-h-[38px] text-sm font-bold border text-center">{formatCurrency(s.totalAmount)}</td>
+                                    <td className="px-3 py-1.5 min-h-[38px] text-sm font-bold border text-center text-emerald-600">{formatCurrency(s.paid)}</td>
+                                    <td className="px-3 py-1.5 min-h-[38px] text-sm font-black border text-center text-red-600 bg-red-50/20">{formatCurrency(s.remaining)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -793,17 +867,17 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                           </div>
                         ))}
                         
-                        <div className="mt-12 bg-gray-50 p-8 rounded-2xl border-2 border-gray-900 flex justify-between items-center">
+                        <div className="mt-12 bg-gray-50 p-5 rounded-2xl border-2 border-gray-900 flex justify-between items-center">
                            <span className="text-xl font-black">إجمالي الديون المتبقية على جميع الطلاب</span>
-                           <span className="text-3xl font-black text-red-600">
+                           <span className="text-lg font-black text-slate-900 tracking-tight text-red-600">
                               {formatCurrency(reportData.studentBalances.reduce((sum, s) => sum + s.remaining, 0))}
                            </span>
                         </div>
                       </div>
                     ) : (
                       <>
-                        <div className="grid grid-cols-2 gap-12 mb-12">
-                          <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-3 mb-12">
+                          <div className="space-y-2">
                             <h4 className="text-xl font-black border-b border-gray-200 pb-2 flex items-center gap-2">
                               <TrendingUp className="w-5 h-5 text-emerald-600" />
                               تفاصيل الإيرادات
@@ -818,7 +892,7 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                             </div>
                           </div>
 
-                          <div className="space-y-6">
+                          <div className="space-y-2">
                             <h4 className="text-xl font-black border-b border-gray-200 pb-2 flex items-center gap-2">
                               <TrendingDown className="w-5 h-5 text-red-600" />
                               تفاصيل المصاريف
@@ -846,9 +920,23 @@ export default function Reports({ school, students, payments, staff, staffPaymen
                           </div>
                         </div>
 
-                        <div className="bg-gray-900 text-white p-8 rounded-2xl flex justify-between items-center">
-                          <span className="text-2xl font-black">صافي الربح النهائي للفترة</span>
+                        <div className="bg-gray-900 text-white p-5 rounded-2xl flex justify-between items-center mb-8">
+                          <span className="text-lg font-black">صافي الربح النهائي للفترة</span>
                           <span className="text-4xl font-black">{formatCurrency(reportData.net)}</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-3 mt-4 pt-8 border-t border-gray-200">
+                           <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-center">
+                             <p className="text-emerald-800 font-black text-lg mb-2">المبلغ الكلي للتسجيل</p>
+                             <div className="flex flex-col items-center justify-center gap-2">
+                               <p className="text-3xl font-black text-emerald-600">{formatCurrency(reportData.registrationSummary.reduce((a, b) => a + b.totalDue, 0))}</p>
+                               <span className="text-lg font-black text-emerald-800 bg-emerald-100 px-4 py-1.5 rounded-full border-2 border-emerald-300 shadow-sm mt-1">العدد الكلي للطلاب: {reportData.registrationSummary.reduce((a, b) => a + b.count, 0)} طالب</span>
+                             </div>
+                           </div>
+                           <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center flex flex-col justify-center">
+                             <p className="text-red-800 font-black text-lg mb-2">الديون المتبقية</p>
+                             <p className="text-3xl font-black text-red-600">{formatCurrency(reportData.studentBalances.reduce((sum, s) => sum + s.remaining, 0))}</p>
+                           </div>
                         </div>
                       </>
                     )}
@@ -870,8 +958,8 @@ export default function Reports({ school, students, payments, staff, staffPaymen
           </div>
         )}
 
-        <div className="p-12 text-center opacity-50 bg-gray-50">
-           <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+        <div className="p-4 text-center opacity-50 bg-gray-50">
+           <FileText className="w-10 h-10 text-gray-300 mx-auto mb-4" />
            <p className="text-gray-500 font-bold">انقر على "معاينة وطباعة" لمشاهدة التقرير الكامل بصيغة قابلة للطباعة</p>
         </div>
       </div>

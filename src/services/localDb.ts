@@ -1,12 +1,13 @@
+import { auth } from '../lib/firebase';
 import { 
-  School, Student, Payment, Staff, StaffPayment, StaffInvoice, 
+  School, Student, Payment, Staff, StaffPayment, StaffInvoice, User,
   GeneralExpense, CardTemplate, ManualLedgerConfig, ManualLedgerEntry,
-  AttendanceRecord, ParentNotification, WhatsAppSettings, WhatsAppTemplate, ExpenseCategory, InvestorPayment
+  AttendanceRecord, ParentNotification, WhatsAppSettings, WhatsAppTemplate, ExpenseCategory, InvestorPayment,
+  Holiday
 } from '../types';
 
-const STORAGE_KEY = 'school_accounting_db';
-
 interface DB {
+  users: User[];
   schools: School[];
   students: Student[];
   payments: Payment[];
@@ -23,9 +24,11 @@ interface DB {
   whatsAppTemplates: WhatsAppTemplate[];
   expenseCategories: ExpenseCategory[];
   investorPayments: InvestorPayment[];
+  holidays: Holiday[];
 }
 
 const initialDB: DB = {
+  users: [],
   schools: [],
   students: [],
   payments: [],
@@ -41,79 +44,134 @@ const initialDB: DB = {
   whatsAppSettings: [],
   whatsAppTemplates: [],
   expenseCategories: [],
-  investorPayments: []
+  investorPayments: [],
+  holidays: []
 };
 
-export const localDb = {
-  get(): DB {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) return initialDB;
-    try {
-      const db = JSON.parse(data);
-      // Ensure all keys exist (for backward compatibility)
-      return { ...initialDB, ...db };
-    } catch (e) {
-      return initialDB;
+function loadFromCache(): DB {
+  try {
+    const cached = localStorage.getItem('school_accounting_local_db');
+    if (cached) {
+      return { ...initialDB, ...JSON.parse(cached) };
     }
+  } catch (e) {
+    console.error("Failed to load local DB", e);
+  }
+  return { ...initialDB };
+}
+
+function saveToCache(data: DB) {
+  try {
+    localStorage.setItem('school_accounting_local_db', JSON.stringify(data));
+  } catch (e) {
+    console.error("Failed to save local DB", e);
+  }
+}
+
+let memoryDB: DB = loadFromCache();
+
+export const localDb = {
+  async init() {
+    window.dispatchEvent(new Event('local-db-update'));
+    return Promise.resolve();
+  },
+
+  get(): DB {
+    return memoryDB;
   },
 
   save(data: DB) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    // Dispatch custom event to notify listeners
+    memoryDB = data;
+    saveToCache(memoryDB);
     window.dispatchEvent(new Event('local-db-update'));
   },
 
-  // Generic CRUD
+  setupListeners(onRefresh: () => void) {
+    window.addEventListener('local-db-update', onRefresh);
+  },
+
   getAll<K extends keyof DB>(key: K): DB[K] {
-    return this.get()[key];
+    return memoryDB[key] || initialDB[key];
   },
 
   add<K extends keyof DB>(key: K, item: any) {
-    const db = this.get();
-    const newItem = { ...item, id: Math.random().toString(36).substring(2, 15) };
-    (db[key] as any[]).push(newItem);
-    this.save(db);
+    const id = item.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const newItem = { ...item, id };
+    
+    memoryDB[key] = [...(memoryDB[key] as any), newItem] as any;
+    saveToCache(memoryDB);
+    window.dispatchEvent(new Event('local-db-update'));
+    
     return newItem;
   },
 
   addMany<K extends keyof DB>(key: K, items: any[]) {
-    const db = this.get();
-    const newItems = items.map(item => ({ ...item, id: Math.random().toString(36).substring(2, 15) }));
-    (db[key] as any[]).push(...newItems);
-    this.save(db);
+    const newItems = items.map(item => ({
+      id: item.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      ...item
+    }));
+    
+    memoryDB[key] = [...(memoryDB[key] as any), ...newItems] as any;
+    saveToCache(memoryDB);
+    window.dispatchEvent(new Event('local-db-update'));
+    
     return newItems;
   },
 
   update<K extends keyof DB>(key: K, id: string, updates: any) {
-    const db = this.get();
-    const index = (db[key] as any[]).findIndex((i: any) => i.id === id);
+    const collectionArr = [...(memoryDB[key] as any[])];
+    const index = collectionArr.findIndex((i: any) => i.id === id);
     if (index !== -1) {
-      db[key][index] = { ...db[key][index], ...updates };
-      this.save(db);
+      const updatedItem = { ...collectionArr[index], ...updates };
+      collectionArr[index] = updatedItem;
+      memoryDB[key] = collectionArr as any;
+      saveToCache(memoryDB);
+      window.dispatchEvent(new Event('local-db-update'));
     }
   },
 
   delete<K extends keyof DB>(key: K, id: string) {
-    const db = this.get();
-    db[key] = (db[key] as any[]).filter((i: any) => i.id !== id) as any;
-    this.save(db);
+    memoryDB[key] = (memoryDB[key] as any[]).filter((i: any) => i.id !== id) as any;
+    saveToCache(memoryDB);
+    window.dispatchEvent(new Event('local-db-update'));
+  },
+
+  batch<K extends keyof DB>(key: K, operations: Array<{ type: 'add' | 'update' | 'delete', id?: string, data?: any }>) {
+    let collectionArr = [...(memoryDB[key] as any[])];
+    
+    operations.forEach(op => {
+      if (op.type === 'add') {
+        const id = op.data.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const newItem = { ...op.data, id };
+        collectionArr.push(newItem);
+      } else if (op.type === 'update' && op.id) {
+        const idx = collectionArr.findIndex((i: any) => i.id === op.id);
+        if (idx !== -1) {
+          collectionArr[idx] = { ...collectionArr[idx], ...op.data };
+        }
+      } else if (op.type === 'delete' && op.id) {
+        collectionArr = collectionArr.filter((i: any) => i.id !== op.id);
+      }
+    });
+
+    memoryDB[key] = collectionArr as any;
+    saveToCache(memoryDB);
+    window.dispatchEvent(new Event('local-db-update'));
   },
 
   exportAll(): string {
-    return JSON.stringify(this.get());
+    return JSON.stringify(memoryDB);
   },
 
   importAll(json: string) {
     try {
       const data = JSON.parse(json);
-      // Basic validation
       if (data && typeof data === 'object' && 'schools' in data) {
-        this.save(data);
-      } else {
-        throw new Error('Invalid backup file');
+        memoryDB = { ...initialDB, ...data };
+        saveToCache(memoryDB);
+        window.dispatchEvent(new Event('local-db-update'));
       }
-    } catch (e) {
-      throw new Error('Failed to parse backup file');
-    }
+    } catch (e) {}
   }
 };
+

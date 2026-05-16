@@ -1,10 +1,10 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { School, Student, Staff, GeneralExpense, Payment, ManualLedgerConfig, ManualLedgerEntry } from '../types';
 import { Printer, FileText, LayoutGrid, List, Settings, X } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { formatCurrency } from '../lib/utils';
 import { format } from 'date-fns';
-import { useState } from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import ManualLedgerManager from './ManualLedgerManager';
@@ -30,15 +30,29 @@ export default function LedgerManager({
 }: LedgerManagerProps) {
   const [viewMode, setViewMode] = useState<'automated' | 'manual'>('automated');
   const [showAutoConfig, setShowAutoConfig] = useState(false);
-  const [autoConfig, setAutoConfig] = useState({
-    showPaidAmount: true,
-    showPhone: true,
-    showTotalAmount: true,
-    numPaymentSlots: 8,
-    showStaff: true,
-    showExpenses: true,
-    fontSize: 'text-sm'
+  const [autoConfig, setAutoConfig] = useState(() => {
+    const saved = localStorage.getItem('financeLedgerAutoConfig');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // Fallback to default
+      }
+    }
+    return {
+      showPaidAmount: true,
+      showPhone: true,
+      showTotalAmount: true,
+      numPaymentSlots: 8,
+      showStaff: true,
+      showExpenses: true,
+      fontSize: 'text-sm'
+    };
   });
+
+  useEffect(() => {
+    localStorage.setItem('financeLedgerAutoConfig', JSON.stringify(autoConfig));
+  }, [autoConfig]);
 
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ 
@@ -77,10 +91,10 @@ export default function LedgerManager({
   const totalCurrentMonthExpenses = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+    <div className="space-y-2">
+      <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-2">
         <div>
-          <h2 className="text-2xl font-black text-gray-900">سجل الحسابات المنظم</h2>
+          <h2 className="text-lg font-black text-gray-900">سجل الحسابات المنظم</h2>
           <p className="text-gray-500 font-bold">طباعة سجل الحسابات الكامل للطلاب والموظفين</p>
         </div>
         <div className="flex items-center gap-3">
@@ -109,7 +123,7 @@ export default function LedgerManager({
           {viewMode === 'automated' && (
             <button
               onClick={() => setShowAutoConfig(true)}
-              className="bg-gray-100 text-gray-600 px-6 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-gray-200 transition-all"
+              className="bg-gray-100 text-gray-600 px-3 py-1.5 min-h-[38px] rounded-2xl font-black flex items-center gap-2 hover:bg-gray-200 transition-all"
             >
               <Settings className="w-5 h-5" />
               تخصيص السجل
@@ -117,7 +131,7 @@ export default function LedgerManager({
           )}
           <button
             onClick={() => handlePrint()}
-            className="theme-bg text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 theme-shadow transition-all hover:opacity-95"
+            className="theme-bg text-white px-8 py-2 rounded-2xl font-black flex items-center gap-2 theme-shadow transition-all hover:opacity-95"
           >
             <Printer className="w-6 h-6" />
             طباعة السجل الكامل
@@ -126,10 +140,10 @@ export default function LedgerManager({
       </div>
 
       {viewMode === 'automated' ? (
-        <div className="space-y-8">
+        <div className="space-y-2">
           {/* Preview of Grade Sections */}
           {studentsByGrade.map(([grade, gradeStudents]) => (
-            <div key={grade} className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm space-y-6">
+            <div key={grade} className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm space-y-2">
               <div className="flex justify-between items-center border-b border-gray-50 pb-4">
                 <h3 className="text-xl font-black text-gray-900">قسم: {grade}</h3>
                 <span className="bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-xs font-black">
@@ -137,9 +151,9 @@ export default function LedgerManager({
                 </span>
               </div>
               
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
                 {/* Info Table Preview */}
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <h4 className="text-sm font-black text-gray-400 flex items-center gap-2">
                     <FileText className="w-4 h-4" />
                     معاينة جدول المعلومات
@@ -174,7 +188,7 @@ export default function LedgerManager({
                 </div>
 
                 {/* Tracking Table Preview */}
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <h4 className="text-sm font-black text-gray-400 flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4" />
                     معاينة سجل المتابعة اليدوي ({autoConfig.numPaymentSlots} حقول)
@@ -210,11 +224,11 @@ export default function LedgerManager({
 
           {/* Summary Preview */}
           {(autoConfig.showStaff || autoConfig.showExpenses) && (
-            <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm space-y-6">
+            <div className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm space-y-2">
               <h3 className="text-xl font-black text-gray-900 border-b border-gray-50 pb-4">معاينة الخلاصة المالية</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {autoConfig.showStaff && (
-                  <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                  <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
                     <h4 className="text-sm font-black text-gray-900 mb-4">سجل رواتب الموظفين ({staff.length})</h4>
                     <div className="space-y-2">
                       {staff.slice(0, 2).map(s => (
@@ -228,7 +242,7 @@ export default function LedgerManager({
                   </div>
                 )}
                 {autoConfig.showExpenses && (
-                  <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                  <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
                     <h4 className="text-sm font-black text-gray-900 mb-4">المصروفات ({currentMonthExpenses.length})</h4>
                     <div className="space-y-2">
                       {currentMonthExpenses.slice(0, 2).map(e => (
@@ -256,99 +270,102 @@ export default function LedgerManager({
       )}
 
       {/* Automated Ledger Config Modal */}
-      {showAutoConfig && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl p-10 border border-gray-100">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black text-gray-900">تخصيص السجل التلقائي</h2>
-              <button onClick={() => setShowAutoConfig(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={autoConfig.showPaidAmount}
-                    onChange={(e) => setAutoConfig(prev => ({ ...prev, showPaidAmount: e.target.checked }))}
-                    className="w-5 h-5 rounded-lg border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-black text-gray-700 group-hover:text-blue-600 transition-colors">إظهار المبلغ المدفوع</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={autoConfig.showPhone}
-                    onChange={(e) => setAutoConfig(prev => ({ ...prev, showPhone: e.target.checked }))}
-                    className="w-5 h-5 rounded-lg border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-black text-gray-700 group-hover:text-blue-600 transition-colors">إظهار هاتف ولي الأمر</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={autoConfig.showTotalAmount}
-                    onChange={(e) => setAutoConfig(prev => ({ ...prev, showTotalAmount: e.target.checked }))}
-                    className="w-5 h-5 rounded-lg border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-black text-gray-700 group-hover:text-blue-600 transition-colors">إظهار المبلغ الكلي</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={autoConfig.showStaff}
-                    onChange={(e) => setAutoConfig(prev => ({ ...prev, showStaff: e.target.checked }))}
-                    className="w-5 h-5 rounded-lg border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-black text-gray-700 group-hover:text-blue-600 transition-colors">إظهار سجل الرواتب</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={autoConfig.showExpenses}
-                    onChange={(e) => setAutoConfig(prev => ({ ...prev, showExpenses: e.target.checked }))}
-                    className="w-5 h-5 rounded-lg border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-black text-gray-700 group-hover:text-blue-600 transition-colors">إظهار سجل المصروفات</span>
-                </label>
+      
+        {showAutoConfig && (
+          <div className="integrated-page z-[300] no-scrollbar">
+            <div
+              className="w-full w-full mx-auto min-h-screen my-0  bg-white  relative z-10 shadow-sm flex flex-col no-scrollbar"
+            >
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white relative z-50 sticky top-0 shadow-sm px-12">
+                <div className="flex items-center gap-3 text-right leading-relaxed">
+                  <div className="p-5 bg-slate-900 rounded-2xl text-white shadow-xl">
+                    <Settings className="w-6 h-6 animate-spin-slow" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight text-slate-900 tracking-tight leading-relaxed">تخصيص بنية السجل التلقائي</h3>
+                    <p className="text-sm font-bold text-slate-400 mt-1">تحديد الحقول والبيانات التي تظهر في نسخة السجل المطبوعة</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAutoConfig(false)} 
+                  className="p-4 hover:bg-rose-50 rounded-2xl transition-all text-slate-300 hover:text-rose-500 border border-slate-50"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
 
-              <div className="pt-4 border-t border-gray-100">
-                <label className="block text-sm font-black text-gray-700 mb-2">عدد حقول الدفع اليدوية</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={autoConfig.numPaymentSlots}
-                  onChange={(e) => setAutoConfig(prev => ({ ...prev, numPaymentSlots: parseInt(e.target.value) || 8 }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-blue-100 font-bold"
-                />
+              <div className="flex-1 overflow-y-auto p-4 lg:p-5 custom-scrollbar w-full bg-slate-50/20 custom-scrollbar">
+                <div className="max-w-5xl mx-auto w-full /space-y-2">
+                  <div className="bg-white p-4 lg:p-14 rounded-3xl border border-slate-100 shadow-xl space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 px-6 uppercase tracking-[0.3em] text-right mb-4">البيانات الأساسية التي سيتم عرضها</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {[
+                        { id: 'showPaidAmount', label: 'إظهار المبلغ المدفوع' },
+                        { id: 'showPhone', label: 'إظهار هاتف ولي الأمر' },
+                        { id: 'showTotalAmount', label: 'إظهار المبلغ الكلي' },
+                        { id: 'showStaff', label: 'إظهار سجل الرواتب' },
+                        { id: 'showExpenses', label: 'إظهار سجل المصروفات' }
+                      ].map((pref) => (
+                        <button
+                          key={pref.id}
+                          onClick={() => setAutoConfig(prev => ({ ...prev, [pref.id]: !prev[pref.id as keyof typeof prev] }))}
+                          className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${autoConfig[pref.id as keyof typeof autoConfig] ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-50 bg-slate-50 text-slate-400'}`}
+                        >
+                          <span className="text-lg font-black">{pref.label}</span>
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center border-2 ${autoConfig[pref.id as keyof typeof autoConfig] ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                            {autoConfig[pref.id as keyof typeof autoConfig] && <List className="w-4 h-4 text-white" />}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="pt-10 border-t border-slate-50 space-y-2">
+                      <label className="block text-xl font-black text-slate-900 pr-6 text-right">عدد حقول الدفع اليدوية في المستند الورقي</label>
+                      <div className="relative group max-w-sm ml-auto">
+                        <input
+                          type="number"
+                          min="1"
+                          max="12"
+                          value={autoConfig.numPaymentSlots}
+                          onChange={(e) => setAutoConfig(prev => ({ ...prev, numPaymentSlots: parseInt(e.target.value) || 8 }))}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-10 py-6 outline-none focus:ring-2 focus:ring-slate-100 font-black text-xl text-blue-600 shadow-inner text-center"
+                        />
+                      </div>
+                      <p className="text-xs font-bold text-slate-400 text-right px-6 italic">تستخدم هذه الحقول لتسجيل المدفوعات يدوياً بعد الطباعة</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <button
-                onClick={() => setShowAutoConfig(false)}
-                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all"
-              >
-                حفظ الإعدادات
-              </button>
+              <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-center sticky bottom-0 z-50">
+                <button
+                  onClick={() => setShowAutoConfig(false)}
+                  className="w-full max-w-xl bg-slate-900 text-white py-2 px-6 rounded-2xl font-bold text-lg shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  حفظ وتطبيق إعدادات السجل
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      
 
       {/* Hidden Printable Content */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', opacity: 0, pointerEvents: 'none' }}>
-        <div ref={printRef} className="p-8 text-right font-cairo" dir="rtl">
+        <div ref={printRef} className="p-5 text-right font-cairo" dir="rtl">
           {/* Page 1 & 2 for each grade */}
           {studentsByGrade.map(([grade, gradeStudents]) => (
-            <div key={grade} className="space-y-8">
+            <div key={grade} className="space-y-2">
               {/* Page 1: Information */}
               <div className="p-4" style={{ pageBreakAfter: 'always', minHeight: '100vh' }}>
                 <div className="text-center mb-8 border-b-4 border-double border-gray-900 pb-4">
+                  {school.logo && (
+                    <div className="flex justify-center mb-4">
+                      <img src={school.logo} alt="شعار المدرسة" className="h-20 object-contain grayscale" />
+                    </div>
+                  )}
                   <h1 className="text-4xl font-black">{school.name}</h1>
-                  <h2 className="text-2xl font-black mt-2">سجل معلومات الطلاب - {grade}</h2>
+                  <h2 className="text-lg font-black mt-2">سجل معلومات الطلاب - {grade}</h2>
                   <p className="font-bold mt-1 text-gray-600">تاريخ الطباعة: {format(new Date(), 'yyyy-MM-dd')}</p>
                 </div>
                 <table className="w-full border-2 border-gray-900 text-sm">
@@ -381,8 +398,13 @@ export default function LedgerManager({
               {/* Page 2: Manual Payment Tracking */}
               <div className="p-4" style={{ pageBreakAfter: 'always', minHeight: '100vh' }}>
                 <div className="text-center mb-8 border-b-4 border-double border-gray-900 pb-4">
+                  {school.logo && (
+                    <div className="flex justify-center mb-4">
+                      <img src={school.logo} alt="شعار المدرسة" className="h-20 object-contain grayscale" />
+                    </div>
+                  )}
                   <h1 className="text-4xl font-black">{school.name}</h1>
-                  <h2 className="text-2xl font-black mt-2">سجل متابعة الأقساط اليدوي - {grade}</h2>
+                  <h2 className="text-lg font-black mt-2">سجل متابعة الأقساط اليدوي - {grade}</h2>
                 </div>
                 <table className="w-full border-2 border-gray-900 text-[10px]">
                   <thead>
@@ -420,13 +442,18 @@ export default function LedgerManager({
           {(autoConfig.showStaff || autoConfig.showExpenses) && (
             <div className="p-4">
               <div className="text-center mb-12 border-b-4 border-double border-gray-900 pb-4">
+                {school.logo && (
+                  <div className="flex justify-center mb-4">
+                    <img src={school.logo} alt="شعار المدرسة" className="h-20 object-contain grayscale" />
+                  </div>
+                )}
                 <h1 className="text-4xl font-black">{school.name}</h1>
-                <h2 className="text-2xl font-black mt-2">خلاصة السجل المالي</h2>
+                <h2 className="text-lg font-black mt-2">خلاصة السجل المالي</h2>
               </div>
 
               {autoConfig.showStaff && (
                 <div className="mb-12">
-                  <h3 className="text-2xl font-black mb-6 border-r-8 border-blue-600 pr-4">سجل رواتب الموظفين</h3>
+                  <h3 className="text-lg font-black mb-6 border-r-8 border-blue-600 pr-4">سجل رواتب الموظفين</h3>
                   <table className="w-full border-2 border-gray-900">
                     <thead>
                       <tr className="bg-gray-100">
@@ -452,11 +479,11 @@ export default function LedgerManager({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-12">
+              <div className="grid grid-cols-2 gap-3">
                 {autoConfig.showExpenses ? (
-                  <div className="border-2 border-gray-900 p-8 rounded-3xl">
-                    <h3 className="text-2xl font-black mb-6 border-b-2 border-gray-300 pb-4">مصروفات الشهر الحالي</h3>
-                    <div className="space-y-4 min-h-[300px]">
+                  <div className="border-2 border-gray-900 p-5 rounded-3xl">
+                    <h3 className="text-lg font-black mb-6 border-b-2 border-gray-300 pb-4">مصروفات الشهر الحالي</h3>
+                    <div className="space-y-2 min-h-[300px]">
                       {currentMonthExpenses.map(e => (
                         <div key={e.id} className="flex justify-between items-center text-lg font-bold border-b border-gray-100 pb-2">
                           <span className="text-gray-700">{e.description}</span>
@@ -471,17 +498,17 @@ export default function LedgerManager({
                         </div>
                       ))}
                     </div>
-                    <div className="mt-6 pt-6 border-t-4 border-gray-900 flex justify-between items-center font-black text-2xl">
+                    <div className="mt-6 pt-6 border-t-4 border-gray-900 flex justify-between items-center font-black text-lg">
                       <span>إجمالي المصروفات:</span>
                       <span className="text-red-600">{formatCurrency(totalCurrentMonthExpenses)}</span>
                     </div>
                   </div>
                 ) : <div />}
 
-                <div className="border-2 border-gray-900 p-8 rounded-3xl flex flex-col justify-between">
+                <div className="border-2 border-gray-900 p-5 rounded-3xl flex flex-col justify-between">
                   <div>
-                    <h3 className="text-2xl font-black mb-6 border-b-2 border-gray-300 pb-4">ملاحظات إضافية</h3>
-                    <div className="space-y-6">
+                    <h3 className="text-lg font-black mb-6 border-b-2 border-gray-300 pb-4">ملاحظات إضافية</h3>
+                    <div className="space-y-2">
                       <div className="h-0.5 bg-gray-300 w-full"></div>
                       <div className="h-0.5 bg-gray-300 w-full"></div>
                       <div className="h-0.5 bg-gray-300 w-full"></div>

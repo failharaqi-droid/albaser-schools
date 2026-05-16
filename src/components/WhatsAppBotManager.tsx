@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { School, WhatsAppSettings, Student, ParentNotification, WhatsAppTemplate } from '../types';
 import { localDb } from '../services/localDb';
 import { WhatsAppService } from '../services/WhatsAppService';
+import { toast } from './Toast';
 import { 
   MessageSquare, 
   Settings, 
@@ -44,16 +45,16 @@ export default function WhatsAppBotManager({ school, students, notifications, se
 
   const [templateName, setTemplateName] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState<WhatsAppTemplate | null>(null);
 
   const schoolTemplates = useMemo(() => 
     templates.filter(t => t.schoolId === school.id),
     [templates, school.id]
-  );
-
+    );
   const GRADES = [
     "الأول الابتدائي", "الثاني الابتدائي", "الثالث الابتدائي", "الرابع الابتدائي", "الخامس الابتدائي", "السادس الابتدائي",
     "الأول المتوسط", "الثاني المتوسط", "الثالث المتوسط",
-    "الرابع الإعدادي", "الخامس الإعدادي", "السادس الإعدادي"
+    "الرابع العلمي", "الرابع الأدبي", "الخامس العلمي", "الخامس الأدبي", "السادس العلمي", "السادس الأدبي"
   ];
 
   const currentSettings = useMemo(() => {
@@ -69,17 +70,17 @@ export default function WhatsAppBotManager({ school, students, notifications, se
         apiSecret: '',
         apiBody: '',
         adminPhone: '',
-        attendancePresentTemplate: '✨ *إشعار حضور مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بدخول الطالب للمدرسة بسلام.\n\n- الصف: {grade}\n- الوقت: {time}\n- التاريخ: {date}\n\nنتمنى لابننا يوماً دراسياً ممتعاً.',
-        attendanceAbsentTemplate: '⚠️ *تنبيه غياب - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب متغيب عن المدرسة لهذا اليوم {date}.\n\nيرجى تزويد الإدارة بعذر الغياب عبر الواتساب أو مراجعة المدرسة.\nشكراً لتعاونكم.',
-        paymentTemplate: '✅ *وصل استلام إلكتروني - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم استلام مبلغ الدفعة بنجاح.\n\n- المبلغ المسدد: {amount}\n- الرصيد المتبقي: {remain}\n- التاريخ: {date}\n\nشكراً لالتزامكم بالسداد.',
-        violationTemplate: '📝 *تنبيه إداري - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم تسجيل ملحوظة/مخالفة بحق الطالب.\n\n- السبب: {reason}\n- التاريخ: {date}\n\nيرجى مراجعة إدارة شؤون الطلاب للمتابعة.',
-        welcomeTemplate: '🎓 *أهلاً بكم في مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب المحترم:\nنرحب بانضمام ابننا *{name}* إلى أسرتنا التعليمية.\n\n📜 *حكمة اليوم:*\n"العلم يرفع بيتاً لا عماد له.. والجهل يهدم بيت العز والكرم"\n\n📋 *معلومات الطالب:*\n- الصف: {grade}\n- المبلغ الكلي: {total}\n- الرقم الأكاديمي: {barcode}\n\n📝 *تعليمات وقوانين المدرسة:*\n1. الالتزام بالزي الموحد.\n2. الحضور والمغادرة في المواعيد المحددة.\n3. المحافظة على نظافة وممتلكات المدرسة.\n4. يمنع جلب الهواتف الذكية.\n\nنتمنى لابننا عاماً دراسياً حافلاً بالنجاح والتفوق.',
-        summaryTemplate: '📊 *تقرير يومي إجمالي - مدرسة {school_name}*\nبتاريخ: {date}\n\n*الطلاب الغائبين:*\n{absent_list}\n\n*الطلاب المخالفين:*\n{violation_list}',
-        reminderTemplate: '*💰 تذكير بسداد القسط - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود تذكيركم بموقف الحساب الخاص بالطالب:\n\n- القسط الكلي: {total}\n- إجمالي الواصل: {paid_total}\n- المبلغ المتبقي: {remain}\n\nيرجى مراجعة قسم الحسابات لتسوية المتبقي لضمان استمرار الخدمات التعليمية.\nشكراً لتفهمكم.',
-        absenceWarning6Template: '⚠️ *تنبيه تجاوز الغياب (6 أيام) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بأن الطالب قد تجاوز 6 أيام من الغياب.\nيرجى الانتباه لضمان عدم تأثر المستوى الدراسي.\n\nنتمنى لابننا التوفيق.',
-        absenceSummons10Template: '🚨 *استدعاء ولي أمر (10 أيام غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب قد تجاوز 10 أيام غياب.\n*يرجى مراجعة إدارة المدرسة غداً فوراً* لمناقشة وضع الطالب الدراسي.\n\nحضوركم ضروري جداً.',
-        absenceExpulsion12Template: '🚫 *إنذار نهائي بالفصل (12 يوم غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنبلغكم رسمياً بأن الطالب قد تجاوز 12 يوماً من الغياب.\nهذا يعتبر *إنذاراً نهائياً بالفصل* من المدرسة حسب اللوائح المتبعة.\n\nيرجى مراجعة الإدارة فوراً.',
-        statusReportTemplate: '📊 *تقرير حالة الطالب - مدرسة {school_name}*\n\nحضرة ولي امر الطالب: {parent}\nابننا العزيز: {name}\nالصف: {grade}\nالمبلغ الكلي: {total}\nالواصل: {paid}\nالمتبقي: {remain}\nاخر دفعة: {last_payment}\nتاريخ اخر دفعة: {last_payment_date}\n\nالغيابات بالعدد: {absences}\nالتنبيهات عدد: {alerts}\nالاستدعاءات عدد: {summons}\nالانذارات عدد: {warnings}\n\nنتمنى لابننا كل التوفيق والنجاح.',
+        attendancePresentTemplate: '✨ *إشعار حضور مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بدخول الطالب للمدرسة بسلام.\n\n- الصف: {grade}\n- الوقت: {time}\n- التاريخ: {date}\nالعام الدراسي: {academic_year}\n\nنتمنى لابننا يوماً دراسياً ممتعاً.',
+        attendanceAbsentTemplate: '⚠️ *تنبيه غياب - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب متغيب عن المدرسة لهذا اليوم {date}.\nالعام الدراسي: {academic_year}\n\nيرجى تزويد الإدارة بعذر الغياب عبر الواتساب أو مراجعة المدرسة.\nشكراً لتعاونكم.',
+        paymentTemplate: '✅ *وصل استلام إلكتروني - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم استلام مبلغ الدفعة بنجاح.\n\n- المبلغ المسدد: {amount}\n- الرصيد المتبقي: {remain}\n- التاريخ: {date}\nالعام الدراسي: {academic_year}\n\nشكراً لالتزامكم بالسداد.',
+        violationTemplate: '📝 *تنبيه إداري - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم تسجيل ملحوظة/مخالفة بحق الطالب.\n\n- السبب: {reason}\n- التاريخ: {date}\nالعام الدراسي: {academic_year}\n\nيرجى مراجعة إدارة شؤون الطلاب للمتابعة.',
+        welcomeTemplate: '🎓 *أهلاً بكم في مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب المحترم:\nنرحب بانضمام ابننا *{name}* إلى أسرتنا التعليمية.\n\n📜 *حكمة اليوم:*\n"العلم يرفع بيتاً لا عماد له.. والجهل يهدم بيت العز والكرم"\n\n📋 *معلومات الطالب:*\n- الصف: {grade}\n- الرقم الأكاديمي: {barcode}\nالعام الدراسي: {academic_year}\n\n🔗 *قنوات التواصل الخاصة بنا:*\nالقناة العامة للمدرسة: {general_channel}\nقناة الصف ({grade}): {grade_channel}\n\nنتمنى لابننا عاماً دراسياً حافلاً بالنجاح والتفوق.',
+        summaryTemplate: '📊 *تقرير يومي إجمالي - مدرسة {school_name}*\nبتاريخ: {date}\nالعام الدراسي: {academic_year}\n\n*الطلاب الغائبين:*\n{absent_list}\n\n*الطلاب المخالفين:*\n{violation_list}',
+        reminderTemplate: '*💰 تذكير بسداد القسط - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود تذكيركم بموقف الحساب الخاص بالطالب:\n\n- القسط الكلي: {total}\n- إجمالي الواصل: {paid_total}\n- المبلغ المتبقي: {remain}\nالعام الدراسي: {academic_year}\n\nيرجى مراجعة قسم الحسابات لتسوية المتبقي لضمان استمرار الخدمات التعليمية.\nشكراً لتفهمكم.',
+        absenceWarning6Template: '⚠️ *تنبيه تجاوز الغياب (6 أيام) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بأن الطالب قد تجاوز 6 أيام من الغياب.\nالعام الدراسي: {academic_year}\nيرجى الانتباه لضمان عدم تأثر المستوى الدراسي.\n\nنتمنى لابننا التوفيق.',
+        absenceSummons10Template: '🚨 *استدعاء ولي أمر (10 أيام غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب قد تجاوز 10 أيام غياب.\nالعام الدراسي: {academic_year}\n*يرجى مراجعة إدارة المدرسة غداً فوراً* لمناقشة وضع الطالب الدراسي.\n\nحضوركم ضروري جداً.',
+        absenceExpulsion12Template: '🚫 *إنذار نهائي بالفصل (12 يوم غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنبلغكم رسمياً بأن الطالب قد تجاوز 12 يوماً من الغياب.\nالعام الدراسي: {academic_year}\nهذا يعتبر *إنذاراً نهائياً بالفصل* من المدرسة حسب اللوائح المتبعة.\n\nيرجى مراجعة الإدارة فوراً.',
+        statusReportTemplate: '📊 *تقرير حالة الطالب - مدرسة {school_name}*\n\nحضرة ولي امر الطالب: {parent}\nابننا العزيز: {name}\nالصف: {grade}\nالعام الدراسي: {academic_year}\nالمبلغ الكلي: {total}\nالواصل: {paid}\nالمتبقي: {remain}\nاخر دفعة: {last_payment}\nتاريخ اخر دفعة: {last_payment_date}\n\nالغيابات بالعدد: {absences}\nالتنبيهات عدد: {alerts}\nالاستدعاءات عدد: {summons}\nالانذارات عدد: {warnings}\n\nنتمنى لابننا كل التوفيق والنجاح.',
         messageDelay: 2
       } as Partial<WhatsAppSettings>;
     }
@@ -95,18 +96,20 @@ export default function WhatsAppBotManager({ school, students, notifications, se
     apiSecret: currentSettings.apiSecret || '',
     apiBody: currentSettings.apiBody || '',
     adminPhone: currentSettings.adminPhone || '',
-    attendancePresentTemplate: currentSettings.attendancePresentTemplate || '✨ *إشعار حضور مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بدخول الطالب للمدرسة بسلام.\n\n- الصف: {grade}\n- الوقت: {time}\n- التاريخ: {date}',
-    attendanceAbsentTemplate: currentSettings.attendanceAbsentTemplate || '⚠️ *تنبيه غياب - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب متغيب عن المدرسة لهذا اليوم {date}.',
-    paymentTemplate: currentSettings.paymentTemplate || '✅ *وصل استلام إلكتروني - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم استلام مبلغ الدفعة بنجاح.\n\n- المبلغ المسدد: {amount}\n- الرصيد المتبقي: {remain}',
-    violationTemplate: currentSettings.violationTemplate || '📝 *تنبيه إداري - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم تسجيل ملحوظة/مخالفة بحق الطالب.\n\n- السبب: {reason}',
-    welcomeTemplate: currentSettings.welcomeTemplate || '🎓 *أهلاً بكم في مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب المحترم:\nنرحب بانضمام ابننا *{name}* إلى أسرتنا التعليمية.\n\n📜 *حكمة اليوم:*\n"العلم يرفع بيتاً لا عماد له.. والجهل يهدم بيت العز والكرم"\n\n📋 *معلومات الطالب:*\n- الصف: {grade}\n- المبلغ الكلي: {total}\n- الرقم الأكاديمي: {barcode}\n\nنتمنى لابننا عاماً دراسياً حافلاً بالنجاح والتفوق.',
-    summaryTemplate: currentSettings.summaryTemplate || '📊 *تقرير يومي إجمالي - مدرسة {school_name}*\nبتاريخ: {date}\n\n*الطلاب الغائبين:*\n{absent_list}',
-    reminderTemplate: currentSettings.reminderTemplate || '*💰 تذكير بسداد القسط - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود تذكيركم بموقف الحساب الخاص بالطالب:\n\n- القسط الكلي: {total}\n- إجمالي الواصل: {paid_total}\n- المبلغ المتبقي: {remain}',
-    absenceWarning6Template: currentSettings.absenceWarning6Template || '⚠️ *تنبيه تجاوز الغياب (6 أيام) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بأن الطالب قد تجاوز 6 أيام من الغياب.\nيرجى الانتباه لضمان عدم تأثر المستوى الدراسي.',
-    absenceSummons10Template: currentSettings.absenceSummons10Template || '🚨 *استدعاء ولي أمر (10 أيام غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب قد تجاوز 10 أيام غياب.\n*يرجى مراجعة إدارة المدرسة غداً فوراً*.',
-    absenceExpulsion12Template: currentSettings.absenceExpulsion12Template || '🚫 *إنذار نهائي بالفصل (12 يوم غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنبلغكم رسمياً بأن الطالب قد تجاوز 12 يوماً من الغياب.\nهذا يعتبر *إنذاراً نهائياً بالفصل*.',
-    statusReportTemplate: currentSettings.statusReportTemplate || '📊 *تقرير حالة الطالب - مدرسة {school_name}*\n\nحضرة ولي امر الطالب: {parent}\nابننا العزيز: {name}\nالصف: {grade}\nالمبلغ الكلي: {total}\nالواصل: {paid}\nالمتبقي: {remain}\nاخر دفعة: {last_payment}\nتاريخ اخر دفعة: {last_payment_date}\n\nالغيابات بالعدد: {absences}\nالتنبيهات عدد: {alerts}\nالاستدعاءات عدد: {summons}\nالانذارات عدد: {warnings}',
-    messageDelay: currentSettings.messageDelay || 2
+    attendancePresentTemplate: currentSettings.attendancePresentTemplate || '✨ *إشعار حضور مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بدخول الطالب للمدرسة بسلام.\n\n- الصف: {grade}\n- الوقت: {time}\n- التاريخ: {date}\nالعام الدراسي: {academic_year}',
+    attendanceAbsentTemplate: currentSettings.attendanceAbsentTemplate || '⚠️ *تنبيه غياب - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب متغيب عن المدرسة لهذا اليوم {date}.\nالعام الدراسي: {academic_year}',
+    paymentTemplate: currentSettings.paymentTemplate || '✅ *وصل استلام إلكتروني - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم استلام مبلغ الدفعة بنجاح.\n\n- المبلغ المسدد: {amount}\n- الرصيد المتبقي: {remain}\nالعام الدراسي: {academic_year}',
+    violationTemplate: currentSettings.violationTemplate || '📝 *تنبيه إداري - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nتم تسجيل ملحوظة/مخالفة بحق الطالب.\n\n- السبب: {reason}\nالعام الدراسي: {academic_year}',
+    welcomeTemplate: currentSettings.welcomeTemplate || '🎓 *أهلاً بكم في مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب المحترم:\nنرحب بانضمام ابننا *{name}* إلى أسرتنا التعليمية.\n\n📜 *حكمة اليوم:*\n"العلم يرفع بيتاً لا عماد له.. والجهل يهدم بيت العز والكرم"\n\n📋 *معلومات الطالب:*\n- الصف: {grade}\n- الرقم الأكاديمي: {barcode}\nالعام الدراسي: {academic_year}\n\n🔗 *قنوات التواصل الخاصة بنا:*\nالقناة العامة للمدرسة: {general_channel}\nقناة الصف ({grade}): {grade_channel}\n\nنتمنى لابننا عاماً دراسياً حافلاً بالنجاح والتفوق.',
+    summaryTemplate: currentSettings.summaryTemplate || '📊 *تقرير يومي إجمالي - مدرسة {school_name}*\nبتاريخ: {date}\nالعام الدراسي: {academic_year}\n\n*الطلاب الغائبين:*\n{absent_list}',
+    reminderTemplate: currentSettings.reminderTemplate || '*💰 تذكير بسداد القسط - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود تذكيركم بموقف الحساب الخاص بالطالب:\n\n- القسط الكلي: {total}\n- إجمالي الواصل: {paid_total}\n- المبلغ المتبقي: {remain}\nالعام الدراسي: {academic_year}',
+    absenceWarning6Template: currentSettings.absenceWarning6Template || '⚠️ *تنبيه تجاوز الغياب (6 أيام) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنود إعلامكم بأن الطالب قد تجاوز 6 أيام من الغياب.\nالعام الدراسي: {academic_year}\nيرجى الانتباه لضمان عدم تأثر المستوى الدراسي.',
+    absenceSummons10Template: currentSettings.absenceSummons10Template || '🚨 *استدعاء ولي أمر (10 أيام غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنحيطكم علماً بأن الطالب قد تجاوز 10 أيام غياب.\nالعام الدراسي: {academic_year}\n*يرجى مراجعة إدارة المدرسة غداً فوراً*.',
+    absenceExpulsion12Template: currentSettings.absenceExpulsion12Template || '🚫 *إنذار نهائي بالفصل (12 يوم غياب) - مدرسة {school_name}*\n\nعزيزي ولي أمر الطالب: {name}\nنبلغكم رسمياً بأن الطالب قد تجاوز 12 يوماً من الغياب.\nالعام الدراسي: {academic_year}\nهذا يعتبر *إنذاراً نهائياً بالفصل*.',
+    statusReportTemplate: currentSettings.statusReportTemplate || '📊 *تقرير حالة الطالب - مدرسة {school_name}*\n\nحضرة ولي امر الطالب: {parent}\nابننا العزيز: {name}\nالصف: {grade}\nالعام الدراسي: {academic_year}\nالمبلغ الكلي: {total}\nالواصل: {paid}\nالمتبقي: {remain}\nاخر دفعة: {last_payment}\nتاريخ اخر دفعة: {last_payment_date}\n\nالغيابات بالعدد: {absences}\nالتنبيهات عدد: {alerts}\nالاستدعاءات عدد: {summons}\nالانذارات عدد: {warnings}',
+    messageDelay: currentSettings.messageDelay || 2,
+    generalChannelLink: currentSettings.generalChannelLink || '',
+    gradeChannelLinks: currentSettings.gradeChannelLinks || {}
   });
 
   const applyPreset = (type: 'get' | 'post_json' | 'ultramsg' | 'greenapi' | 'meta' | 'wasenderapi') => {
@@ -158,7 +161,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
           ...prev,
           apiMethod: 'POST',
           apiUrl: 'https://graph.facebook.com/v17.0/YOUR_PHONE_NUMBER_ID/messages',
-          apiBody: '{"messaging_product": "whatsapp", "to": "{phone}", "type": "text", "text": {"body": "{message}"}}'
+          apiBody: '{"messaging_product": "whatsapp", "to": "{phone}", "type": "text", "text": {"body": "{message}"'
         }));
         break;
     }
@@ -176,12 +179,12 @@ export default function WhatsAppBotManager({ school, students, notifications, se
     } else {
       localDb.add('whatsAppSettings', { ...formData, schoolId: school.id });
     }
-    alert('تم حفظ الإعدادات بنجاح');
+    toast.success('تم حفظ الإعدادات بنجاح');
   };
 
   const saveAsCustomTemplate = () => {
     if (!templateName.trim()) {
-      alert('يرجى إدخال اسم للقالب');
+      toast.error('يرجى إدخال اسم للقالب');
       return;
     }
 
@@ -200,11 +203,11 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       absenceExpulsion12Template: formData.absenceExpulsion12Template,
       statusReportTemplate: formData.statusReportTemplate,
       createdAt: new Date().toISOString()
-    });
+      });
 
     setTemplateName('');
     setShowSaveModal(false);
-    alert('تم حفظ القالب بنجاح');
+    toast.success('تم حفظ القالب بنجاح');
   };
 
   const loadTemplate = (template: WhatsAppTemplate) => {
@@ -223,13 +226,11 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       statusReportTemplate: template.statusReportTemplate || prev.statusReportTemplate,
     }));
     setActiveTab('settings');
-    alert(`تم تحميل القالب: ${template.name}`);
+    toast.info(`تم تحميل القالب: ${template.name}`);
   };
 
-  const deleteTemplate = (id: string) => {
-    if (confirm('هل أنت متأكد من حذف هذا القالب؟')) {
-      localDb.delete('whatsAppTemplates', id);
-    }
+  const deleteTemplate = (template: WhatsAppTemplate) => {
+    setDeletingTemplate(template);
   };
 
   const sendTestMessage = async () => {
@@ -252,8 +253,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
           { ...formData, id: 'test', schoolId: school.id } as WhatsAppSettings,
           testPhone,
           testMessage
-        );
-        
+    );
         if (success) {
           setTestResult({ success: true, message: 'تم إرسال طلب API بنجاح. يرجى التحقق من لوحة التحكم الخاصة بمزود الخدمة.' });
         } else {
@@ -281,14 +281,14 @@ export default function WhatsAppBotManager({ school, students, notifications, se
   }, [notifications, students, school.id]);
 
   return (
-    <div className="space-y-8 font-cairo" dir="rtl">
-      <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-4">
+    <div className="space-y-2 font-cairo" dir="rtl">
+      <div className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-2">
+        <div className="flex items-center gap-2">
           <div className="bg-emerald-600 p-4 rounded-3xl text-white shadow-xl shadow-emerald-100">
-            <Bot className="w-8 h-8" />
+            <Bot className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-gray-900">بوت الواتساب الذكي</h2>
+            <h2 className="text-lg font-black text-gray-900">بوت الواتساب الذكي</h2>
             <p className="text-gray-500 font-bold">إرسال إشعارات الحضور والغياب والمدفوعات آلياً</p>
           </div>
         </div>
@@ -342,15 +342,15 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       </div>
 
       {activeTab === 'settings' && (
-        <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm">
+        <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+          <div className="lg:col-span-1 space-y-2">
+            <div className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm">
               <h3 className="text-xl font-black mb-6 flex items-center gap-2">
                 <Settings className="text-blue-600 w-5 h-5" />
                 إعدادات الربط
               </h3>
               
-              <div className="space-y-5">
+              <div className="space-y-2">
                 <label className="flex items-center gap-3 bg-blue-50 p-4 rounded-2xl cursor-pointer">
                   <input
                     type="checkbox"
@@ -386,7 +386,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
 
                 {formData.useGateway ? (
                   <>
-                    <div className="space-y-4">
+                    <div className="space-y-2">
                       <label className="block text-sm font-black text-gray-700">إعدادات سريعة (Presets)</label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         <button type="button" onClick={() => applyPreset('wasenderapi')} className="bg-indigo-600 text-white p-3 rounded-2xl border border-indigo-700 hover:bg-indigo-700 transition-all flex flex-col items-center justify-center gap-1 shadow-lg shadow-indigo-100">
@@ -406,7 +406,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
 
                     {/* Green-API Guide */}
                     {formData.apiUrl.includes('green-api.com') && (
-                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-3">
+                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-2">
                         <h4 className="text-blue-900 font-black text-xs flex items-center gap-2">
                           <span className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px]">!</span>
                           دليل ربط Green-API:
@@ -434,7 +434,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
 
                     {/* WASenderApi Guide */}
                     {formData.apiUrl.includes('wasenderapi.com') && (
-                      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-2">
                         <h4 className="text-indigo-900 font-black text-xs flex items-center gap-2">
                           <span className="w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[10px]">!</span>
                           دليل ربط WASenderApi:
@@ -463,14 +463,14 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                       </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-sm font-black text-gray-700 mb-2">رمز الوصول (Token/AuthKey)</label>
                         <input
                           type="text"
                           value={formData.apiToken}
                           onChange={(e) => setFormData(prev => ({ ...prev, apiToken: e.target.value }))}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold outline-none focus:ring-4 focus:ring-blue-100"
                           placeholder="AuthKey أو Token"
                         />
                         <p className="mt-1 text-[10px] text-blue-600 font-bold px-2 italic">استخدم: {'{token}'} أو {'{authkey}'}</p>
@@ -481,20 +481,20 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                           type="text"
                           value={formData.apiSecret}
                           onChange={(e) => setFormData(prev => ({ ...prev, apiSecret: e.target.value }))}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold outline-none focus:ring-4 focus:ring-blue-100"
                           placeholder="AppKey أو Secret"
                         />
                         <p className="mt-1 text-[10px] text-indigo-600 font-bold px-2 italic">استخدم: {'{secret}'} أو {'{appkey}'}</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-sm font-black text-gray-700 mb-2">نوع الطلب (HTTP Method)</label>
                         <select
                           value={formData.apiMethod}
                           onChange={(e) => setFormData(prev => ({ ...prev, apiMethod: e.target.value as 'GET' | 'POST' }))}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold outline-none focus:ring-4 focus:ring-blue-100"
                         >
                           <option value="GET">GET</option>
                           <option value="POST">POST</option>
@@ -506,7 +506,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                           type="text"
                           value={formData.apiUrl}
                           onChange={(e) => setFormData(prev => ({ ...prev, apiUrl: e.target.value }))}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold outline-none focus:ring-4 focus:ring-blue-100"
                           placeholder="https://api.example.com/send"
                         />
                       </div>
@@ -518,7 +518,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                        <textarea
                          value={formData.apiBody}
                          onChange={(e) => setFormData(prev => ({ ...prev, apiBody: e.target.value }))}
-                         className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-xs outline-none focus:ring-4 focus:ring-blue-100"
+                         className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-xs outline-none focus:ring-4 focus:ring-blue-100"
                          rows={4}
                          placeholder='{"phone": "{phone}", "message": "{message}"}'
                        />
@@ -527,8 +527,8 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                     )}
                   </>
                 ) : (
-                  <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 flex gap-4">
-                    <Info className="text-emerald-600 w-12 h-12 shrink-0" />
+                  <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex gap-2">
+                    <Info className="text-emerald-600 w-6 h-6 shrink-0" />
                     <div className="space-y-1">
                       <p className="text-emerald-900 font-black text-sm">وضع الرابط المباشر</p>
                       <p className="text-emerald-700 text-xs font-bold leading-relaxed">
@@ -544,7 +544,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                     type="text"
                     value={formData.adminPhone}
                     onChange={(e) => setFormData(prev => ({ ...prev, adminPhone: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold outline-none focus:ring-4 focus:ring-blue-100"
                     placeholder="9647700000000"
                   />
                   <p className="mt-2 text-[10px] text-gray-400 font-bold px-2 italic">الرقم الذي ستصله التقارير الإجمالية</p>
@@ -559,14 +559,14 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                       max="60"
                       value={formData.messageDelay}
                       onChange={(e) => setFormData(prev => ({ ...prev, messageDelay: parseInt(e.target.value) || 2 }))}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold outline-none focus:ring-4 focus:ring-blue-100"
                     />
                     <Clock className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                   </div>
                   <p className="mt-2 text-[10px] text-amber-600 font-bold px-2 italic">يُنصح بوضع 3-5 ثوانٍ لتجنب حظر الرقم من قبل واتساب</p>
                 </div>
 
-                <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 space-y-3">
+                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-2">
                   <div className="flex items-center gap-2 text-blue-900 font-black text-sm">
                     <Zap className="w-4 h-4" />
                     نصيحة لـ Green-API
@@ -579,8 +579,8 @@ export default function WhatsAppBotManager({ school, students, notifications, se
             </div>
           </div>
 
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm">
+          <div className="lg:col-span-2 space-y-2">
+            <div className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-black flex items-center gap-2">
                   <MessageSquare className="text-emerald-600 w-5 h-5" />
@@ -592,108 +592,145 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">رسالة تسجيل الحضور</label>
+                  <label className="text-xs font-black text-gray-600 px-2">رسالة تسجيل الحضور</label>
                   <textarea
                     value={formData.attendancePresentTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, attendancePresentTemplate: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-emerald-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-emerald-100 min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">رسالة تسجيل الغياب</label>
+                  <label className="text-xs font-black text-gray-600 px-2">رسالة تسجيل الغياب</label>
                   <textarea
                     value={formData.attendanceAbsentTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, attendanceAbsentTemplate: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-red-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-red-100 min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">رسالة وصل الدفع</label>
+                  <label className="text-xs font-black text-gray-600 px-2">رسالة وصل الدفع</label>
                   <textarea
                     value={formData.paymentTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, paymentTemplate: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-blue-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-blue-100 min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">رسالة المخالفة أو الطرد</label>
+                  <label className="text-xs font-black text-gray-600 px-2">رسالة المخالفة أو الطرد</label>
                   <textarea
                     value={formData.violationTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, violationTemplate: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-amber-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-amber-100 min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">رسالة الترحيب والشروط</label>
+                  <label className="text-xs font-black text-gray-600 px-2">رسالة الترحيب والشروط</label>
                   <textarea
                     value={formData.welcomeTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, welcomeTemplate: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-purple-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-purple-100 min-h-[120px]"
                   />
+                  <p className="mt-2 text-[10px] text-gray-400 font-bold px-2 italic flex flex-wrap gap-1">المتغيرات الإضافية: <span>{'{general_channel}'}</span> <span>{'{grade_channel}'}</span></p>
+                </div>
+
+                <div className="md:col-span-2 space-y-4 bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 mt-4">
+                  <h4 className="text-sm font-black text-indigo-900 mb-2 flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" /> إعدادات قنوات التواصل (لرسائل الترحيب)
+                  </h4>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-indigo-700 px-2">رابط القناة العامة للمدرسة</label>
+                    <input
+                      type="url"
+                      value={formData.generalChannelLink || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, generalChannelLink: e.target.value }))}
+                      placeholder="https://t.me/..."
+                      className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 font-bold text-sm outline-none focus:ring-4 focus:ring-indigo-100"
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-indigo-700 px-2">روابط القنوات المخصصة لكل صف</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {GRADES.map(grade => (
+                        <div key={grade} className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold text-indigo-600">{grade}</label>
+                          <input
+                            type="url"
+                            value={formData.gradeChannelLinks?.[grade] || ''}
+                            onChange={(e) => setFormData(prev => ({ 
+                              ...prev, 
+                              gradeChannelLinks: { ...(prev.gradeChannelLinks || {}), [grade]: e.target.value } 
+                            }))}
+                            placeholder="رابط القناة..."
+                            className="w-full bg-white border border-indigo-100 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:border-indigo-300"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">رسالة تذكير بالدفع (المتأخرين)</label>
+                  <label className="text-xs font-black text-gray-600 px-2">رسالة تذكير بالدفع (المتأخرين)</label>
                   <textarea
                     value={formData.reminderTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, reminderTemplate: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-red-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-red-100 min-h-[120px]"
                   />
                   <p className="mt-2 text-[10px] text-gray-400 font-bold px-2 italic">استخدم المتغيرات: {'{total}'} (المبلغ الكلي), {'{last_amount}'} (آخر قسط), {'{last_date}'} (تاريخه), {'{remain}'} (المتبقي)</p>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">تنبيه غياب 6 أيام</label>
+                  <label className="text-xs font-black text-gray-600 px-2">تنبيه غياب 6 أيام</label>
                   <textarea
                     value={formData.absenceWarning6Template}
                     onChange={(e) => setFormData(prev => ({ ...prev, absenceWarning6Template: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-amber-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-amber-100 min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">استدعاء ولي أمر (10 أيام)</label>
+                  <label className="text-xs font-black text-gray-600 px-2">استدعاء ولي أمر (10 أيام)</label>
                   <textarea
                     value={formData.absenceSummons10Template}
                     onChange={(e) => setFormData(prev => ({ ...prev, absenceSummons10Template: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-orange-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-orange-100 min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-black text-gray-600 px-2">إنذار فصل (12 يوم)</label>
+                  <label className="text-xs font-black text-gray-600 px-2">إنذار فصل (12 يوم)</label>
                   <textarea
                     value={formData.absenceExpulsion12Template}
                     onChange={(e) => setFormData(prev => ({ ...prev, absenceExpulsion12Template: e.target.value }))}
                     rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-rose-100 min-h-[120px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-rose-100 min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-black text-indigo-600 px-2">قالب تقرير حالة الطالب الفردي</label>
+                  <label className="text-xs font-black text-indigo-600 px-2">قالب تقرير حالة الطالب الفردي</label>
                   <textarea
                     value={formData.statusReportTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, statusReportTemplate: e.target.value }))}
                     rows={6}
-                    className="w-full bg-indigo-50/30 border border-indigo-100 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-indigo-100 min-h-[150px]"
+                    className="w-full bg-indigo-50/30 border border-indigo-100 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-indigo-100 min-h-[150px]"
                   />
                   <p className="mt-2 text-[10px] text-gray-400 font-bold px-2 italic">
                     متغيرات إضافية: {'{parent}'}, {'{paid}'}, {'{last_payment}'}, {'{last_payment_date}'}, {'{absences}'}, {'{alerts}'}, {'{summons}'}, {'{warnings}'}
                   </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-black text-gray-600 px-2">قالب التقرير الإجمالي (الغياب والمخالفات)</label>
+                  <label className="text-xs font-black text-gray-600 px-2">قالب التقرير الإجمالي (الغياب والمخالفات)</label>
                   <textarea
                     value={formData.summaryTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, summaryTemplate: e.target.value }))}
                     rows={6}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold text-sm outline-none focus:ring-4 focus:ring-blue-100 min-h-[150px]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold text-sm outline-none focus:ring-4 focus:ring-blue-100 min-h-[150px]"
                   />
                   <p className="mt-2 text-[10px] text-gray-400 font-bold px-2 italic">
                     استخدم: <span className="text-blue-600">{'{absent_list}'}</span> و <span className="text-red-600">{'{violation_list}'}</span>
@@ -702,7 +739,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
               </div>
 
               {canModify && (
-                <div className="mt-8 flex justify-end gap-4">
+                <div className="mt-8 flex justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setShowSaveModal(true)}
@@ -713,7 +750,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                   </button>
                   <button
                     type="submit"
-                    className="bg-blue-600 text-white px-12 py-5 rounded-2xl font-black flex items-center gap-3 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all text-lg"
+                    className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black flex items-center gap-3 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all text-lg"
                   >
                     <Save className="w-6 h-6" />
                     حفظ الإعدادات الحالية
@@ -726,9 +763,9 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       )}
 
       {activeTab === 'templates' && (
-        <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm space-y-8">
+        <div className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm space-y-2">
           <div className="flex justify-between items-center">
-            <h3 className="text-2xl font-black flex items-center gap-3">
+            <h3 className="text-lg font-black flex items-center gap-3">
               <Layout className="text-blue-600 w-6 h-6" />
               مكتبة القوالب المخصصة
             </h3>
@@ -737,9 +774,9 @@ export default function WhatsAppBotManager({ school, students, notifications, se
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {schoolTemplates.map((template) => (
-              <div key={template.id} className="bg-gray-50 p-6 rounded-3xl border border-gray-100 hover:border-blue-200 transition-all group">
+              <div key={template.id} className="bg-gray-50 p-4 rounded-3xl border border-gray-100 hover:border-blue-200 transition-all group">
                 <div className="flex justify-between items-start mb-4">
                   <div className="bg-white p-3 rounded-2xl shadow-sm">
                     <MessageSquare className="w-6 h-6 text-blue-500" />
@@ -747,7 +784,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                   <div className="flex gap-2">
                     {canModify && (
                       <button 
-                        onClick={() => deleteTemplate(template.id)}
+                        onClick={() => deleteTemplate(template)}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -763,7 +800,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
 
                 <button
                   onClick={() => loadTemplate(template)}
-                  className="w-full bg-white border border-gray-200 text-gray-700 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 transition-all shadow-sm"
+                  className="w-full bg-white border border-gray-200 text-gray-700 py-2 rounded-2xl font-black text-sm flex items-center justify-center gap-2 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 transition-all shadow-sm"
                 >
                   <Copy className="w-4 h-4" />
                   استخدام هذا القالب
@@ -776,9 +813,9 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                 setActiveTab('settings');
                 setShowSaveModal(true);
               }}
-              className="border-4 border-dashed border-gray-100 p-8 rounded-[32px] flex flex-col items-center justify-center gap-4 text-gray-300 hover:border-blue-100 hover:text-blue-300 transition-all"
+              className="border-4 border-dashed border-gray-100 p-5 rounded-[32px] flex flex-col items-center justify-center gap-2 text-gray-300 hover:border-blue-100 hover:text-blue-300 transition-all"
             >
-              <Plus className="w-12 h-12" />
+              <Plus className="w-6 h-6" />
               <span className="font-black text-lg">إضافة قالب جديد</span>
             </button>
           </div>
@@ -786,7 +823,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       )}
 
       {activeTab === 'history' && (
-        <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm">
+        <div className="bg-white p-5 rounded-[32px] border border-gray-100 shadow-sm">
           <div className="flex justify-between items-center mb-8">
             <h3 className="text-xl font-black">سجل التنبيهات المرسلة</h3>
             <span className="bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-xs font-black">
@@ -857,13 +894,13 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                           </div>
                         </td>
                       </tr>
-                    );
+    );
                   })
                 ) : (
                   <tr>
                     <td colSpan={6} className="p-20 text-center">
-                      <div className="flex flex-col items-center gap-4 opacity-20">
-                        <History className="w-16 h-16" />
+                      <div className="flex flex-col items-center gap-2 opacity-20">
+                        <History className="w-10 h-10" />
                         <p className="text-xl font-black">لا يوجد سجل تنبيهات حتى الآن</p>
                       </div>
                     </td>
@@ -876,17 +913,17 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       )}
 
       {activeTab === 'test' && (
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-white p-10 rounded-[40px] border border-gray-100 shadow-2xl space-y-8">
+        <div className="max-w-5xl mx-auto w-full">
+          <div className="bg-white p-4 rounded-[40px] border border-gray-100 shadow-2xl space-y-2">
             <div className="text-center">
-              <div className="bg-blue-100 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
-                <Zap className="text-blue-600 w-10 h-10" />
+              <div className="bg-blue-100 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <Zap className="text-blue-600 w-6 h-6" />
               </div>
-              <h3 className="text-3xl font-black text-gray-900">اختبار اتصال البوت</h3>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight text-gray-900">اختبار اتصال البوت</h3>
               <p className="text-gray-500 font-bold mt-2">تأكد من صحة إعدادات الـ API عبر إرسال رسالة تجريبية</p>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-2">
               <div>
                 <label className="block text-sm font-black text-gray-700 mb-2">رقم الهاتف المختبر</label>
                 <div className="relative">
@@ -912,7 +949,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
               </div>
 
               {testResult && (
-                <div className={`p-6 rounded-2xl border flex gap-4 ${
+                <div className={`p-4 rounded-2xl border flex gap-2 ${
                   testResult.success ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'
                 }`}>
                   {testResult.success ? (
@@ -949,20 +986,20 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       )}
 
       {activeTab === 'broadcast' && (
-        <div className="max-w-4xl mx-auto space-y-8">
-          <div className="bg-white p-10 rounded-[40px] border border-gray-100 shadow-2xl space-y-8">
-            <div className="flex items-center gap-6">
+        <div className="max-w-5xl mx-auto w-full /space-y-2">
+          <div className="bg-white p-4 rounded-[40px] border border-gray-100 shadow-2xl space-y-2">
+            <div className="flex items-center gap-3">
               <div className="bg-blue-600 p-5 rounded-3xl text-white shadow-xl shadow-blue-100">
-                <Send className="w-10 h-10" />
+                <Send className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-3xl font-black text-gray-900">بث إشعارات عامة</h3>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight text-gray-900">بث إشعارات عامة</h3>
                 <p className="text-gray-500 font-bold">أرسل تنبيهات أو أخبار لآباء الطلاب المحددين آلياً</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-6 text-right">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="space-y-2 text-right">
                 <div>
                   <label className="block text-sm font-black text-gray-700 mb-3">تحديد الجمهور المستهدف</label>
                   <div className="grid grid-cols-3 gap-2 bg-gray-50 p-1 rounded-2xl border border-gray-100">
@@ -985,7 +1022,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                     <select
                       value={broadcastData.grade}
                       onChange={(e) => setBroadcastData(prev => ({ ...prev, grade: e.target.value }))}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold"
                     >
                       <option value="">اختر صفاً...</option>
                       {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
@@ -1029,13 +1066,13 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                 </div>
               </div>
 
-              <div className="bg-blue-50/50 p-8 rounded-[32px] border border-blue-100/50 flex flex-col justify-between">
-                <div className="space-y-4">
+              <div className="bg-blue-50/50 p-5 rounded-[32px] border border-blue-100/50 flex flex-col justify-between">
+                <div className="space-y-2">
                   <div className="flex items-center gap-3 text-blue-900 font-black">
                     <Info className="w-5 h-5" />
                     تحليل البث
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm">
                       <span className="text-xs font-bold text-gray-500">عدد المستهدفين:</span>
                       <span className="font-black text-blue-600">
@@ -1057,7 +1094,7 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                   </p>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {broadcastResult && (
                     <div className={`p-4 rounded-2xl border flex gap-3 animate-in fade-in slide-in-from-top-4 ${
                       broadcastResult.success ? 'bg-emerald-50 border-emerald-100 text-emerald-900' : 'bg-red-50 border-red-100 text-red-900'
@@ -1129,13 +1166,12 @@ export default function WhatsAppBotManager({ school, students, notifications, se
       )}
       {/* Save Template Modal */}
       {showSaveModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-md" onClick={() => setShowSaveModal(false)}></div>
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 border border-gray-100 relative z-10 animate-in zoom-in-95 duration-200">
-            <h3 className="text-2xl font-black text-gray-900 mb-2">حفظ القالب الحالي</h3>
+        <div className="integrated-page z-[300] no-scrollbar">
+          <div className="modal-content">
+            <h3 className="text-lg font-black text-gray-900 mb-2">حفظ القالب الحالي</h3>
             <p className="text-gray-500 font-bold text-sm mb-8">أعطِ هذا القالب اسماً لسهولة العودة إليه لاحقاً</p>
             
-            <div className="space-y-6">
+            <div className="space-y-2">
               <div>
                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3 px-2">اسم القالب</label>
                 <input
@@ -1143,21 +1179,21 @@ export default function WhatsAppBotManager({ school, students, notifications, se
                   type="text"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-blue-100"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 min-h-[38px] font-bold outline-none focus:ring-4 focus:ring-blue-100"
                   placeholder="مثال: قوالب الامتحانات"
                 />
               </div>
 
-              <div className="flex gap-4 pt-4">
+              <div className="flex gap-2 pt-4">
                 <button
                   onClick={saveAsCustomTemplate}
-                  className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100"
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-2xl font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100"
                 >
                   تأكيد الحفظ
                 </button>
                 <button
                   onClick={() => setShowSaveModal(false)}
-                  className="px-8 bg-gray-100 text-gray-600 py-4 rounded-2xl font-black hover:bg-gray-200"
+                  className="px-8 bg-gray-100 text-gray-600 py-2 rounded-2xl font-black hover:bg-gray-200"
                 >
                   إلغاء
                 </button>
@@ -1166,6 +1202,43 @@ export default function WhatsAppBotManager({ school, students, notifications, se
           </div>
         </div>
       )}
+
+      {deletingTemplate && (
+        <div className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 text-center space-y-6">
+              <div className="w-24 h-24 bg-rose-50 rounded-full mx-auto flex items-center justify-center text-rose-500 mb-6">
+                <Trash2 className="w-12 h-12" />
+              </div>
+              <h3 className="text-3xl font-black text-slate-900 tracking-tight">تأكيد الحذف</h3>
+              <p className="text-lg text-slate-500 font-bold leading-relaxed">
+                هل أنت متأكد من حذف قالب المراسلات <span className="text-rose-600">"{deletingTemplate.name}"</span>؟
+                <br />
+                <span className="text-sm font-medium">لا يمكن التراجع عن هذا الإجراء بعد تنفيذه.</span>
+              </p>
+              
+              <div className="flex flex-col gap-3 pt-4">
+                <button 
+                  onClick={() => {
+                    localDb.delete('whatsAppTemplates', deletingTemplate.id);
+                    setDeletingTemplate(null);
+                  }}
+                  className="w-full bg-rose-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-rose-200 hover:bg-rose-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-6 h-6" />
+                  نعم، تأكيد الحذف
+                </button>
+                <button 
+                  onClick={() => setDeletingTemplate(null)}
+                  className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-lg hover:bg-slate-200 active:scale-95 transition-all"
+                >
+                  إلغاء الأمر
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+    );
 }

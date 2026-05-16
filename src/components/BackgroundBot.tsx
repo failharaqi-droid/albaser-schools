@@ -1,26 +1,36 @@
-import { useEffect, useState } from 'react';
-import { ParentNotification, School, Student, AttendanceRecord } from '../types';
+import { useEffect, useState, useRef } from 'react';
+import { ParentNotification, School, Student, AttendanceRecord, Holiday } from '../types';
 import { localDb } from '../services/localDb';
 import { WhatsAppService } from '../services/WhatsAppService';
-import { Bot, CheckCircle2, Loader2, Signal } from 'lucide-react';
+import { Bot, CheckCircle2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, isAfter, parse } from 'date-fns';
 
 export default function BackgroundBot() {
+  const processingRef = useRef(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastSent, setLastSent] = useState<string | null>(null);
 
   const processAutoAbsences = async () => {
     const schools = localDb.getAll('schools') as School[];
+    const holidays = localDb.getAll('holidays') as Holiday[];
     const today = format(new Date(), 'yyyy-MM-dd');
     const now = new Date();
+    const dayOfWeek = now.getDay();
+    
+    // 5 = Friday, 6 = Saturday
+    if (dayOfWeek === 5 || dayOfWeek === 6) {
+      return; // Skip on weekends entirely
+    }
 
     for (const school of schools) {
       if (!school.autoAbsenceCheckEnabled || !school.shiftEndTime) continue;
       if (school.lastAbsenceCheckDate === today) continue;
+      
+      const isHoliday = holidays.some(h => h.schoolId === school.id && h.date === today);
+      if (isHoliday) continue;
 
-      const [hours, minutes] = school.shiftEndTime.split(':');
       const shiftEnd = parse(school.shiftEndTime, 'HH:mm', new Date());
 
       if (isAfter(now, shiftEnd)) {
@@ -37,7 +47,6 @@ export default function BackgroundBot() {
 
         for (const student of schoolStudents) {
           if (!presentIds.has(student.id)) {
-            // Check if already marked absent
             const alreadyMarked = attendance.find(r => r.entityId === student.id && r.status === 'absent');
             if (!alreadyMarked) {
               newRecords.push({
@@ -64,12 +73,11 @@ export default function BackgroundBot() {
 
         if (newRecords.length > 0) {
           localDb.addMany('attendanceRecords', newRecords);
-          if (newNotifications.length > 0) {
-            localDb.addMany('parentNotifications', newNotifications);
-          }
+        }
+        if (newNotifications.length > 0) {
+          localDb.addMany('parentNotifications', newNotifications);
         }
 
-        // Mark as checked for today
         localDb.update('schools', school.id, { lastAbsenceCheckDate: today });
       }
     }
@@ -77,31 +85,31 @@ export default function BackgroundBot() {
 
   useEffect(() => {
     const checkQueue = async () => {
-      // 1. Process Auto Absences first
+      if (processingRef.current) return;
+      
       await processAutoAbsences();
 
-      // 2. Process Notifications
       const allNotifs = localDb.getAll('parentNotifications') as ParentNotification[];
       const pending = allNotifs.filter(n => n.status === 'pending');
       setPendingCount(pending.length);
 
-      if (pending.length > 0 && !isProcessing) {
+      if (pending.length > 0) {
+        processingRef.current = true;
         setIsProcessing(true);
         const next = pending[0];
         
-        // Use student's school settings for delay
         const student = (localDb.getAll('students') as Student[]).find(s => s.id === next.studentId);
         const settings = student ? WhatsAppService.getSettings(student.schoolId) : null;
         const delaySeconds = settings?.messageDelay || 2;
         
-        // Apply the configurable delay
         await new Promise(r => setTimeout(r, delaySeconds * 1000));
         
         await WhatsAppService.processNotification(next.id);
         setLastSent(next.id);
-        setIsProcessing(false);
         
-        // Hide last sent feedback after 3 seconds
+        setIsProcessing(false);
+        processingRef.current = false;
+        
         setTimeout(() => setLastSent(null), 3000);
       }
     };
@@ -123,11 +131,11 @@ export default function BackgroundBot() {
     <div className="fixed bottom-8 left-8 z-[100] pointer-events-none">
       <AnimatePresence>
         {(pendingCount > 0 || lastSent) && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+          <motion.div 
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="bg-white/90 backdrop-blur-xl border border-gray-100 shadow-2xl p-4 rounded-[2rem] flex items-center gap-4 min-w-[280px]"
+            className="bg-white/90 backdrop-blur-xl border border-gray-100 shadow-2xl p-4 rounded-2xl flex items-center gap-2 min-w-[280px]"
           >
             <div className={`p-3 rounded-2xl relative ${isProcessing ? 'bg-blue-600 text-white animate-pulse' : 'bg-emerald-100 text-emerald-600'}`}>
               {isProcessing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Bot className="w-6 h-6" />}
@@ -155,16 +163,12 @@ export default function BackgroundBot() {
             </div>
 
             {lastSent && !isProcessing && (
-              <motion.div 
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="text-emerald-500"
-              >
+              <div className="text-emerald-500">
                 <CheckCircle2 className="w-5 h-5" />
-              </motion.div>
+              </div>
             )}
             
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/10 to-emerald-600/10 rounded-[2.2rem] -z-10 animate-pulse"></div>
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/10 to-emerald-600/10 rounded-2xl -z-10 animate-pulse"></div>
           </motion.div>
         )}
       </AnimatePresence>

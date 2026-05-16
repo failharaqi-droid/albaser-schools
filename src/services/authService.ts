@@ -1,44 +1,57 @@
 import { Tab, User } from '../types';
+import { localDb } from './localDb';
 
-const AUTH_USERS_KEY = 'school_accounting_users';
 const AUTH_SESSION_KEY = 'school_accounting_session';
 
-const ALL_TABS: Tab[] = ['dashboard', 'students', 'attendance', 'payments', 'reports', 'unpaid', 'staff', 'expenses', 'ledger', 'idcards', 'backup', 'whatsapp', 'teachers', 'investor', 'accounts'];
+const ALL_TABS: Tab[] = ['dashboard', 'students', 'attendance', 'payments', 'add-student', 'attendance-reports', 'reports', 'unpaid', 'staff', 'expenses', 'ledger', 'idcards', 'backup', 'whatsapp', 'teachers', 'investor', 'accounts', 'userguide'];
+
+const SUPER_ADMIN: User = {
+  id: 'super-admin-failh',
+  username: 'failh',
+  password: 'Ff71295343',
+  role: 'admin',
+  permissions: ALL_TABS,
+  canModify: true,
+  createdAt: '2024-01-01T00:00:00.000Z'
+};
 
 export const authService = {
   getCurrentUser(): User | null {
-    const data = localStorage.getItem(AUTH_SESSION_KEY);
+    const data = sessionStorage.getItem(AUTH_SESSION_KEY);
     if (!data) return null;
     const user = JSON.parse(data);
-    // Migration for old users
-    if (!user.permissions) {
-      user.permissions = user.role === 'admin' ? ALL_TABS : ['dashboard', 'students', 'attendance'];
-    }
-    if (user.canModify === undefined) {
-      user.canModify = user.role === 'admin';
+    
+    // If it's the super admin, return the fixed object
+    if (user.username === SUPER_ADMIN.username) {
+      return SUPER_ADMIN;
     }
     return user;
   },
 
   getAllUsers(): User[] {
-    const users = JSON.parse(localStorage.getItem(AUTH_USERS_KEY) || '[]');
-    return users.map((user: any) => ({
-      ...user,
-      permissions: user.permissions || (user.role === 'admin' ? ALL_TABS : ['dashboard', 'students', 'attendance']),
-      canModify: user.canModify !== undefined ? user.canModify : (user.role === 'admin')
-    }));
+    const users = localDb.getAll('users');
+    const mappedUsers = [...users];
+
+    // Always include super admin in the list if it's not already there
+    if (!mappedUsers.find((u: User) => u.username === SUPER_ADMIN.username)) {
+      mappedUsers.unshift(SUPER_ADMIN);
+    }
+    
+    return mappedUsers;
   },
 
   register(username: string, password: string, role?: 'admin' | 'staff', permissions?: Tab[], canModify?: boolean) {
+    if (username === SUPER_ADMIN.username) {
+      throw new Error('لا يمكن استخدام اسم مستخدم مدير النظام');
+    }
     const users = this.getAllUsers();
     if (users.find((u: any) => u.username === username)) {
       throw new Error('اسم المستخدم موجود مسبقاً');
     }
     
-    const isFirstUser = users.length === 0;
-    const userRole = role || (isFirstUser ? 'admin' : 'staff');
-    const userPermissions = permissions || (isFirstUser ? ALL_TABS : ['dashboard', 'students', 'attendance']);
-    const userCanModify = canModify !== undefined ? canModify : isFirstUser;
+    const userRole = role || 'staff';
+    const userPermissions = permissions || ['dashboard', 'students', 'attendance'];
+    const userCanModify = canModify !== undefined ? canModify : (userRole === 'admin');
 
     const newUser: User = { 
       id: Math.random().toString(36).substring(2, 15), 
@@ -50,52 +63,54 @@ export const authService = {
       createdAt: new Date().toISOString() 
     };
 
-    users.push(newUser);
-    localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
-    
-    // Only set as current session if it's the very first user (registration)
-    // If an admin is creating an account, we don't want to switch sessions
-    const currentSession = localStorage.getItem(AUTH_SESSION_KEY);
-    if (!currentSession || isFirstUser) {
-      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(newUser));
-    }
-    
+    localDb.add('users', newUser);
     return newUser;
   },
 
   updateUser(id: string, updates: Partial<User>) {
     const users = this.getAllUsers();
-    const index = users.findIndex(u => u.id === id);
-    if (index !== -1) {
-      users[index] = { ...users[index], ...updates };
-      localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
-      
-      // Update session if it's the current user
-      const currentUser = this.getCurrentUser();
-      if (currentUser?.id === id) {
-        localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(users[index]));
-      }
+    const userToUpdate = users.find(u => u.id === id);
+    if (userToUpdate?.username === SUPER_ADMIN.username) {
+       throw new Error('لا يمكن تعديل حساب مدير النظام الثابت');
+    }
+
+    localDb.update('users', id, updates);
+    
+    // Update session if it's the current user
+    const currentUser = this.getCurrentUser();
+    if (currentUser?.id === id) {
+      const updatedUser = { ...userToUpdate, ...updates } as User;
+      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(updatedUser));
     }
   },
 
   deleteUser(id: string) {
     const users = this.getAllUsers();
-    const filtered = users.filter(u => u.id !== id);
-    localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(filtered));
+    const userToDelete = users.find(u => u.id === id);
+    if (userToDelete?.username === SUPER_ADMIN.username) {
+       throw new Error('لا يمكن حذف حساب مدير النظام الثابت');
+    }
+
+    localDb.delete('users', id);
   },
 
   login(username: string, password: string) {
+    if (username === SUPER_ADMIN.username && password === SUPER_ADMIN.password) {
+      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(SUPER_ADMIN));
+      return SUPER_ADMIN;
+    }
+
     const users = this.getAllUsers();
     const user = users.find((u: any) => u.username === username && u.password === password);
     if (user) {
-      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
+      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
       return user;
     }
     throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
   },
 
   logout() {
-    localStorage.removeItem(AUTH_SESSION_KEY);
+    sessionStorage.removeItem(AUTH_SESSION_KEY);
     window.location.reload();
   }
 };

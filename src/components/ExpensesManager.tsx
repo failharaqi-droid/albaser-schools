@@ -16,14 +16,17 @@ import {
   Printer,
   RefreshCw,
   Repeat,
+  TrendingUp,
   Settings2,
   PieChart as PieChartIcon,
+  CheckCircle2,
   ChevronDown
 } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 import { format, startOfMonth, isSameDay, subMonths, startOfYear, endOfMonth, isWithinInterval } from 'date-fns';
 import { useReactToPrint } from 'react-to-print';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { toast } from './Toast';
 
 interface ExpensesManagerProps {
   school: School;
@@ -56,6 +59,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
   const [endDateFilter, setEndDateFilter] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [editingExpense, setEditingExpense] = useState<GeneralExpense | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{id: string, type: 'expense' | 'category' | 'all', title: string} | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -104,7 +108,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
       const month = format(new Date(expense.date), 'yyyy-MM');
       if (!groups[month]) groups[month] = [];
       groups[month].push(expense);
-    });
+      });
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filteredExpenses]);
 
@@ -130,7 +134,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
       category: allCategories[0], 
       description: '', 
       date: format(new Date(), 'yyyy-MM-dd') 
-    });
+      });
     setIsAdding(false);
     setEditingExpense(null);
   };
@@ -151,12 +155,12 @@ export default function ExpensesManager({ school, expenses, categories, canModif
     const periodExpenses = expenses.filter(e => {
       const d = new Date(e.date);
       return isWithinInterval(d, { start, end });
-    });
+      });
 
     const categoriesMap: { [key: string]: number } = {};
     periodExpenses.forEach(e => {
       categoriesMap[e.category] = (categoriesMap[e.category] || 0) + e.amount;
-    });
+      });
 
     const COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280'];
     
@@ -174,20 +178,31 @@ export default function ExpensesManager({ school, expenses, categories, canModif
       category: expense.category,
       description: expense.description,
       date: expense.date.split('T')[0]
-    });
+      });
     setIsAdding(true);
   };
 
-  const deleteExpense = (id: string) => {
-    if (confirm('هل أنت متأكد من حذف هذه المصروفات؟')) {
-      localDb.delete('expenses', id);
+  const executeDelete = () => {
+    if (!deletingItem) return;
+    
+    if (deletingItem.type === 'expense') {
+      localDb.delete('expenses', deletingItem.id);
+    } else if (deletingItem.type === 'category') {
+      localDb.delete('expenseCategories', deletingItem.id);
+    } else if (deletingItem.type === 'all') {
+      expenses.forEach(e => localDb.delete('expenses', e.id));
     }
+    setDeletingItem(null);
+  };
+
+  const deleteExpense = (expense: GeneralExpense) => {
+    setDeletingItem({ id: expense.id, type: 'expense', title: expense.description });
   };
 
   const addCategory = () => {
     if (!newCategoryName.trim()) return;
     if (allCategories.includes(newCategoryName.trim())) {
-      alert('هذا التصنيف موجود بالفعل');
+      toast.warning('هذا التصنيف موجود بالفعل');
       return;
     }
     localDb.add('expenseCategories', {
@@ -197,16 +212,12 @@ export default function ExpensesManager({ school, expenses, categories, canModif
     setNewCategoryName('');
   };
 
-  const deleteCategory = (id: string) => {
-    if (confirm('هل أنت متأكد من حذف هذا التصنيف؟')) {
-      localDb.delete('expenseCategories', id);
-    }
+  const deleteCategory = (category: typeof categories[0]) => {
+    setDeletingItem({ id: category.id, type: 'category', title: category.name });
   };
 
   const handleDeleteAll = () => {
-    if (window.confirm('هل أنت متأكد من حذف جميع المصروفات؟ لا يمكن التراجع عن هذا الإجراء.')) {
-      expenses.forEach(e => localDb.delete('expenses', e.id));
-    }
+    setDeletingItem({ id: 'all', type: 'all', title: 'جميع المصروفات' });
   };
 
   const applyTemplate = (template: typeof RECURRING_TEMPLATES[0]) => {
@@ -216,13 +227,13 @@ export default function ExpensesManager({ school, expenses, categories, canModif
       category: template.category,
       description: template.description,
       date: format(new Date(), 'yyyy-MM-dd')
-    });
+      });
     setShowTemplates(false);
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
-      <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col lg:flex-row gap-6 justify-between items-center">
+    <div className="space-y-2 animate-in fade-in duration-700">
+      <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col lg:flex-row gap-3 justify-between items-center">
         <div className="flex-1 w-full relative">
           <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
@@ -230,11 +241,11 @@ export default function ExpensesManager({ school, expenses, categories, canModif
             placeholder="البحث في المصروفات..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-12 pl-6 py-4 focus:ring-4 focus:ring-red-100 outline-none font-bold transition-all"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-12 pl-6 py-2 focus:ring-4 focus:ring-red-100 outline-none font-bold transition-all"
           />
         </div>
         
-        <div className="flex flex-wrap gap-4 w-full lg:w-auto">
+        <div className="flex flex-wrap gap-2 w-full lg:w-auto">
           <div className="flex flex-1 lg:flex-none gap-3">
             <div className="relative flex-1">
               <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -242,7 +253,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                 type="date"
                 value={startDateFilter}
                 onChange={(e) => setStartDateFilter(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-10 pl-4 py-4 focus:ring-4 focus:ring-red-100 outline-none font-bold transition-all text-xs"
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-10 pl-4 py-2 focus:ring-4 focus:ring-red-100 outline-none font-bold transition-all text-xs"
                 placeholder="من تاريخ"
               />
             </div>
@@ -252,7 +263,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                 type="date"
                 value={endDateFilter}
                 onChange={(e) => setEndDateFilter(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-10 pl-4 py-4 focus:ring-4 focus:ring-red-100 outline-none font-bold transition-all text-xs"
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-10 pl-4 py-2 focus:ring-4 focus:ring-red-100 outline-none font-bold transition-all text-xs"
                 placeholder="إلى تاريخ"
               />
             </div>
@@ -263,7 +274,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-10 pl-6 py-4 focus:ring-4 focus:ring-red-100 outline-none font-black text-gray-700 appearance-none text-xs"
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl pr-10 pl-6 py-2 focus:ring-4 focus:ring-red-100 outline-none font-black text-gray-700 appearance-none text-xs"
             >
               <option value="الكل">جميع الفئات</option>
               {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -277,7 +288,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                 setEndDateFilter('');
                 setSelectedCategory('الكل');
               }}
-              className="bg-gray-100 text-gray-500 px-4 py-4 rounded-2xl font-black hover:bg-gray-200 transition-all"
+              className="bg-gray-100 text-gray-500 px-4 py-2 rounded-2xl font-black hover:bg-gray-200 transition-all"
               title="مسح الفلاتر"
             >
               <X className="w-5 h-5" />
@@ -288,7 +299,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
             <>
               <button
                 onClick={() => setShowCategoryManager(true)}
-                className="bg-gray-50 text-gray-600 px-4 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-gray-100 border border-gray-200 transition-all"
+                className="bg-gray-50 text-gray-600 px-4 py-2 rounded-2xl font-black flex items-center gap-2 hover:bg-gray-100 border border-gray-200 transition-all"
                 title="إدارة التصنيفات"
               >
                 <Settings2 className="w-5 h-5" />
@@ -296,7 +307,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
               
               <button
                 onClick={() => setShowTemplates(true)}
-                className="bg-amber-50 text-amber-600 px-6 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-amber-100 border border-amber-100 transition-all"
+                className="bg-amber-50 text-amber-600 px-3 py-1.5 min-h-[38px] rounded-2xl font-black flex items-center gap-2 hover:bg-amber-100 border border-amber-100 transition-all"
               >
                 <RefreshCw className="w-5 h-5" />
                 مصاريف متكررة
@@ -306,7 +317,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
 
           <button
             onClick={() => setIsPreviewing(true)}
-            className="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all"
+            className="bg-blue-600 text-white px-3 py-1.5 min-h-[38px] rounded-2xl font-black flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all"
           >
             <Printer className="w-5 h-5" />
             معاينة وطباعة
@@ -314,7 +325,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
 
           <button
             onClick={() => setShowCharts(!showCharts)}
-            className={`${showCharts ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'} px-6 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-red-50 transition-all border border-transparent`}
+            className={`${showCharts ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'} px-3 py-1.5 min-h-[38px] rounded-2xl font-black flex items-center gap-2 hover:bg-red-50 transition-all border border-transparent`}
           >
             <PieChartIcon className="w-5 h-5" />
             {showCharts ? 'إخفاء الإحصائيات' : 'عرض الإحصائيات'}
@@ -323,7 +334,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
           {canModify && (
             <button
               onClick={() => setIsAdding(true)}
-              className="theme-bg text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 theme-shadow transition-all hover:opacity-90"
+              className="theme-bg text-white px-8 py-2 rounded-2xl font-black flex items-center gap-2 theme-shadow transition-all hover:opacity-90"
             >
               <Plus className="w-5 h-5" />
               إضافة مصروفات
@@ -332,16 +343,13 @@ export default function ExpensesManager({ school, expenses, categories, canModif
         </div>
       </div>
 
-      <AnimatePresence>
+      
         {showCharts && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+          <div
             className="overflow-hidden"
           >
-            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm mb-6">
-              <div className="flex flex-col lg:flex-row gap-8">
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-6">
+              <div className="flex flex-col lg:flex-row gap-2">
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-3">
@@ -406,9 +414,9 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                   </div>
                 </div>
 
-                <div className="w-full lg:w-80 space-y-4">
+                <div className="w-full lg:w-80 space-y-2">
                   <h4 className="text-sm font-black text-gray-400 mb-4 px-2 tracking-widest">تفاصيل فئات الصرف</h4>
-                  <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
                     {chartData.map((data, idx) => (
                       <div key={idx} className="bg-gray-50 p-4 rounded-2xl flex items-center justify-between group hover:bg-red-50 transition-all border border-transparent hover:border-red-100">
                         <div className="flex items-center gap-3">
@@ -427,83 +435,83 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
 
       <motion.div 
         initial="hidden"
         animate="visible"
         variants={{
-          hidden: { opacity: 0 },
-          visible: { 
-            opacity: 1,
-            transition: { staggerChildren: 0.05 }
-          }
+          hidden: { opacity: 0, y: 20 },
+          visible: { opacity: 1, y: 0 }
         }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3"
       >
-        <motion.div 
-          variants={{
-            hidden: { opacity: 0, y: 10 },
-            visible: { opacity: 1, y: 0 }
-          }}
-          className="bg-red-50 p-6 rounded-3xl border border-red-100"
-        >
-          <p className="text-red-600 font-black text-sm mb-1 text-right">إجمالي المصروفات</p>
-          <p className="text-2xl font-black text-red-700 text-right" dir="rtl">
-            {formatCurrency(filteredExpenses.reduce((sum, e) => sum + e.amount, 0))}
-          </p>
-        </motion.div>
-        <motion.div 
-          variants={{
-            hidden: { opacity: 0, y: 10 },
-            visible: { opacity: 1, y: 0 }
-          }}
-          className="bg-gray-50 p-6 rounded-3xl border border-gray-100"
-        >
-          <p className="text-gray-500 font-black text-sm mb-1 text-right">عدد العمليات</p>
-          <p className="text-2xl font-black text-gray-700 text-right">{filteredExpenses.length} عملية</p>
-        </motion.div>
-        <motion.div 
-          variants={{
-            hidden: { opacity: 0, y: 10 },
-            visible: { opacity: 1, y: 0 }
-          }}
-          className="bg-blue-50 p-6 rounded-3xl border border-blue-100"
-        >
-          <p className="text-blue-600 font-black text-sm mb-1 text-right">أعلى فئة صرف</p>
-          <p className="text-2xl font-black text-blue-700 text-right">{
-            allCategories.reduce((max, cat) => {
-              const total = expenses.filter(e => e.category === cat).reduce((sum, e) => sum + e.amount, 0);
-              return total > max.total ? { cat, total } : max;
-            }, { cat: 'لا يوجد', total: 0 }).cat
-          }</p>
-        </motion.div>
-        <motion.div 
-          variants={{
-            hidden: { opacity: 0, y: 10 },
-            visible: { opacity: 1, y: 0 }
-          }}
-          className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100"
-        >
-          <p className="text-emerald-600 font-black text-sm mb-1 text-right">المتوسط اليومي</p>
-          <p className="text-2xl font-black text-emerald-700 text-right" dir="rtl">
-            {formatCurrency(filteredExpenses.reduce((sum, e) => sum + e.amount, 0) / (filteredExpenses.length || 1))}
-          </p>
-        </motion.div>
+        <div className="bg-white p-5 rounded-2xl border border-red-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-10 h-10 bg-red-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-150" />
+          <div className="relative z-10">
+            <div className="p-3 bg-red-500 text-white rounded-2xl w-fit mb-4">
+              <DollarSign className="w-6 h-6" />
+            </div>
+            <p className="text-gray-400 font-bold text-xs mb-1 text-right uppercase tracking-[0.2em]">إجمالي المصروفات</p>
+            <p className="text-lg font-black text-slate-900 tracking-tight text-red-600 text-right" dir="rtl">
+              {formatCurrency(filteredExpenses.reduce((sum, e) => sum + e.amount, 0))}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-10 h-10 bg-gray-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-150" />
+          <div className="relative z-10">
+            <div className="p-3 bg-gray-800 text-white rounded-2xl w-fit mb-4">
+              <FileText className="w-6 h-6" />
+            </div>
+            <p className="text-gray-400 font-bold text-xs mb-1 text-right uppercase tracking-[0.2em]">عدد العمليات</p>
+            <p className="text-lg font-black text-slate-900 tracking-tight text-gray-900 text-right">{filteredExpenses.length} <span className="text-sm">سجل</span></p>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-10 h-10 bg-blue-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-150" />
+          <div className="relative z-10">
+            <div className="p-3 bg-blue-600 text-white rounded-2xl w-fit mb-4">
+              <Tag className="w-6 h-6" />
+            </div>
+            <p className="text-gray-400 font-bold text-xs mb-1 text-right uppercase tracking-[0.2em]">أعلى فئة صرف</p>
+            <p className="text-lg font-black text-blue-700 text-right truncate">{
+              allCategories.reduce((max, cat) => {
+                const total = expenses.filter(e => e.category === cat).reduce((sum, e) => sum + e.amount, 0);
+                return total > max.total ? { cat, total } : max;
+              }, { cat: 'لا يوجد', total: 0 }).cat
+            }</p>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-10 h-10 bg-emerald-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-150" />
+          <div className="relative z-10">
+            <div className="p-3 bg-emerald-600 text-white rounded-2xl w-fit mb-4">
+              <TrendingUp className="w-6 h-6" />
+            </div>
+            <p className="text-gray-400 font-bold text-xs mb-1 text-right uppercase tracking-[0.2em]">المتوسط اليومي</p>
+            <p className="text-lg font-black text-slate-900 tracking-tight text-emerald-700 text-right" dir="rtl">
+              {formatCurrency(filteredExpenses.reduce((sum, e) => sum + e.amount, 0) / (filteredExpenses.length || 1))}
+            </p>
+          </div>
+        </div>
       </motion.div>
 
-      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-right border-collapse">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-8 py-6 font-black text-gray-600 text-xs">التاريخ</th>
-                <th className="px-8 py-6 font-black text-gray-600 text-xs">الفئة</th>
-                <th className="px-8 py-6 font-black text-gray-600 text-xs">الوصف / التفاصيل</th>
-                <th className="px-8 py-6 font-black text-gray-600 text-xs">المبلغ</th>
-                <th className="px-8 py-6 font-black text-gray-600 text-xs">الإجراءات</th>
+                <th className="px-3 py-1.5 min-h-[38px] text-lg font-black text-gray-600 text-xs">التاريخ</th>
+                <th className="px-3 py-1.5 min-h-[38px] text-lg font-black text-gray-600 text-xs">الفئة</th>
+                <th className="px-3 py-1.5 min-h-[38px] text-lg font-black text-gray-600 text-xs">الوصف / التفاصيل</th>
+                <th className="px-3 py-1.5 min-h-[38px] text-lg font-black text-gray-600 text-xs">المبلغ</th>
+                <th className="px-3 py-1.5 min-h-[38px] text-lg font-black text-gray-600 text-xs">الإجراءات</th>
               </tr>
             </thead>
             <motion.tbody 
@@ -511,37 +519,30 @@ export default function ExpensesManager({ school, expenses, categories, canModif
               animate="visible"
               variants={{
                 hidden: { opacity: 0 },
-                visible: { 
-                  opacity: 1,
-                  transition: { staggerChildren: 0.05 }
-                }
+                visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
               }}
               className="divide-y divide-gray-50"
             >
               {filteredExpenses.map((expense) => (
-                <motion.tr 
-                  key={expense.id} 
-                  variants={{
-                    hidden: { opacity: 0, x: 10 },
-                    visible: { opacity: 1, x: 0 }
-                  }}
+                <tr 
+                  key={expense.id}
                   className="hover:bg-red-50/20 transition-all group"
                 >
-                  <td className="px-8 py-6 text-sm text-gray-500 font-bold">
+                  <td className="px-3 py-1.5 min-h-[38px] text-lg text-sm text-gray-500 font-bold">
                     {format(new Date(expense.date), 'yyyy-MM-dd')}
                   </td>
-                  <td className="px-8 py-6">
+                  <td className="px-3 py-1.5 min-h-[38px] text-lg">
                     <span className="px-4 py-1.5 bg-red-50 text-red-600 rounded-xl text-[10px] font-black border border-red-100">
                       {expense.category}
                     </span>
                   </td>
-                  <td className="px-8 py-6">
+                  <td className="px-3 py-1.5 min-h-[38px] text-lg">
                     <div className="font-black text-gray-900">{expense.description}</div>
                   </td>
-                  <td className="px-8 py-6 font-black text-xl text-red-600" dir="rtl">
+                  <td className="px-3 py-1.5 min-h-[38px] text-lg font-black text-xl text-red-600" dir="rtl">
                     {formatCurrency(expense.amount)}
                   </td>
-                  <td className="px-8 py-6">
+                  <td className="px-3 py-1.5 min-h-[38px] text-lg">
                     {canModify && (
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
                         <button 
@@ -551,7 +552,7 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button 
-                          onClick={() => deleteExpense(expense.id)} 
+                          onClick={() => deleteExpense(expense)} 
                           className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-2xl transition-all shadow-sm"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -559,365 +560,335 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                       </div>
                     )}
                   </td>
-                </motion.tr>
+                </tr>
               ))}
             </motion.tbody>
           </table>
         </div>
         {filteredExpenses.length === 0 && (
           <div className="flex flex-col items-center justify-center py-32 text-gray-400">
-            <DollarSign className="w-24 h-24 mb-6 opacity-10 animate-bounce" />
-            <p className="text-2xl font-black text-gray-300">لا توجد مصروفات مسجلة حالياً</p>
+            <DollarSign className="w-10 h-10 mb-6 opacity-10 animate-bounce" />
+            <p className="text-lg font-black text-gray-300">لا توجد مصروفات مسجلة حالياً</p>
           </div>
         )}
       </div>
 
-      {/* Templates Modal */}
-      <AnimatePresence>
+      
         {showTemplates && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowTemplates(false)}
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-lg rounded-[3.5rem] shadow-2xl overflow-hidden relative z-10 border border-white/20"
-            >
-              <div className="p-10 border-b border-slate-100 flex items-center justify-between bg-white relative z-20">
-                <div className="flex items-center gap-5">
-                  <div className="p-5 bg-amber-50 text-amber-600 rounded-[1.8rem] shadow-xl shadow-amber-50">
-                    <RefreshCw className="w-8 h-8 animate-spin-slow" />
+          <div className="integrated-page">
+            <div className="modal-content">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white relative z-20 sticky top-0 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-800 shadow-sm flex items-center justify-center">
+                    <RefreshCw className="w-6 h-6 animate-spin-slow" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">مصاريف متكررة وجاهزة</h3>
-                    <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest leading-none">Recurring Templates</p>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight text-slate-900 tracking-tight">مصاريف متكررة وجاهزة</h3>
+                    <p className="text-xs font-bold text-slate-500 mt-2">قوالب المصروفات الثابتة لسرعة الإنجاز</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setShowTemplates(false)} 
-                  className="p-4 bg-slate-50 hover:bg-slate-100 rounded-[1.5rem] transition-all text-slate-400 grow-0 shrink-0"
+                  className="bg-slate-50 p-4 hover:bg-slate-100 border border-slate-100 rounded-2xl transition-all text-slate-600 hover:text-slate-900 active:scale-95 transition-all text-slate-400 hover:text-rose-600"
                 >
                   <X className="w-6 h-6" />
                 </button>
               </div>
               
-              <div className="p-10 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar bg-slate-50/20">
-                {RECURRING_TEMPLATES.map((t, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => applyTemplate(t)}
-                    className="w-full flex items-center justify-between p-7 bg-white hover:bg-amber-50/50 border border-slate-100 hover:border-amber-200 rounded-[2.5rem] transition-all group shadow-sm hover:shadow-md"
-                  >
-                    <div className="text-right">
-                      <p className="text-lg font-black text-slate-900 group-hover:text-amber-700 transition-colors">{t.description}</p>
-                      <div className="flex items-center gap-2 mt-1">
+              <div className="flex-1 overflow-y-auto custom-scrollbar w-full p-5 lg:p-4 bg-slate-50/20">
+                <div className="max-w-5xl mx-auto w-full /grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {RECURRING_TEMPLATES.map((t, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => applyTemplate(t)}
+                      className="group p-5 bg-white hover:bg-amber-50/50 border border-slate-100 hover:border-amber-200 rounded-2xl transition-all flex flex-col text-right shadow-sm hover:shadow-xl hover:-translate-y-1"
+                    >
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl group-hover:scale-110 transition-transform">
+                          <DollarSign className="w-6 h-6" />
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500/80 bg-amber-50 px-3 py-1 rounded-full border border-amber-100">
+                          <Repeat className="w-3 h-3" />
+                          ثابت شهرياً
+                        </div>
+                      </div>
+                      <h4 className="text-xl font-black text-slate-900 mb-2 truncate">{t.description}</h4>
+                      <div className="flex items-center gap-2 mb-6">
                         <Tag className="w-3 h-3 text-slate-400" />
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{t.category}</p>
+                        <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">{t.category}</span>
                       </div>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-2xl font-black text-amber-600 tracking-tight">{formatCurrency(t.amount)}</p>
-                      <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500/80 bg-amber-50 px-3 py-1 rounded-full border border-amber-100 mt-2 ml-auto">
-                        <Repeat className="w-3 h-3" />
-                        ثابت شهرياً
+                      <div className="mt-auto pt-6 border-t border-slate-50 flex items-center justify-between">
+                        <span className="text-sm font-black text-slate-400 uppercase tracking-widest">المبلغ</span>
+                        <span className="text-lg font-black text-slate-900 tracking-tight text-amber-600 tracking-tight">{formatCurrency(t.amount)}</span>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
 
-      {/* Add/Edit Expense Modal */}
-      <AnimatePresence>
-        {isAdding && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={resetForm}
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-xl rounded-[3.5rem] shadow-2xl overflow-hidden relative z-10 border border-white/20"
-            >
-              <div className="p-10 border-b border-slate-100 flex items-center justify-between bg-white relative z-20">
-                <div className="flex items-center gap-5">
-                  <div className="theme-bg p-5 rounded-[1.8rem] text-white shadow-xl theme-shadow rotate-3 flex items-center justify-center">
-                    {editingExpense ? <Edit2 className="w-8 h-8" /> : <Plus className="w-8 h-8" />}
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">{editingExpense ? 'تعديل سجل الصرف' : 'إضافة مصروفات جديدة'}</h3>
-                    <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest leading-none">Expense Record Details</p>
-                  </div>
+      {isAdding && (
+        <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-red-100 text-red-600 rounded-2xl">
+                  {editingExpense ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                 </div>
-                <button 
-                  onClick={resetForm} 
-                  className="p-4 bg-slate-50 hover:bg-slate-100 rounded-[1.5rem] transition-all text-slate-400"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">{editingExpense ? 'تعديل السجل المالي' : 'تسجيل مصروفات تشغيلية جديدة'}</h3>
+                </div>
               </div>
+              <button 
+                onClick={resetForm} 
+                className="p-3 bg-white hover:bg-gray-100 rounded-xl transition-all text-gray-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              <form onSubmit={handleSubmit} className="p-10 space-y-8 bg-slate-50/20 relative z-10">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 mb-2 px-4 uppercase tracking-widest">القيمة المالية</label>
-                    <div className="relative group">
-                      <div className="absolute right-6 top-1/2 -translate-y-1/2 bg-red-50 p-2 rounded-xl text-red-600 transition-colors group-hover:bg-red-100 shadow-sm border border-red-50">
-                        <DollarSign className="w-5 h-5" />
-                      </div>
-                      <input 
-                        required 
-                        type="number" 
-                        value={formData.amount} 
-                        onChange={(e) => setFormData({...formData, amount: e.target.value})} 
-                        className="w-full bg-white border border-slate-100 rounded-3xl pr-[4.5rem] pl-6 py-5 outline-none focus:ring-4 focus:ring-red-100/50 font-black text-2xl text-red-600 transition-all shadow-sm" 
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 mb-2 px-4 uppercase tracking-widest">التصنيف</label>
-                    <div className="relative group">
-                      <div className="absolute right-6 top-1/2 -translate-y-1/2 bg-slate-100 p-2 rounded-xl text-slate-400">
-                        <Tag className="w-5 h-5" />
-                      </div>
-                      <select 
-                        value={formData.category} 
-                        onChange={(e) => setFormData({...formData, category: e.target.value})} 
-                        className="w-full bg-white border border-slate-100 rounded-3xl pr-[4.5rem] pl-6 py-5 outline-none focus:ring-4 focus:ring-slate-100/50 font-black appearance-none transition-all shadow-sm text-slate-700"
-                      >
-                        {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
+            <div className="p-5">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Amount */}
+                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 relative">
+                  <label className="block text-xs font-black text-gray-500 mb-2">قيمة المبلغ المصروف بالدينار العراقي</label>
+                  <div className="relative">
+                    <input 
+                      required 
+                      type="number" 
+                      step="any"
+                      value={formData.amount} 
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})} 
+                      className="w-full bg-white border border-gray-200 rounded-xl px-12 py-4 outline-none focus:ring-2 focus:ring-red-100 font-black text-3xl text-red-600 text-center" 
+                      placeholder="0.00"
+                      autoFocus
+                    />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-red-300">د.ع</div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-400 mb-2 px-4 uppercase tracking-widest">تاريخ العملية</label>
-                  <div className="relative group">
-                    <div className="absolute right-6 top-1/2 -translate-y-1/2 bg-slate-100 p-2 rounded-xl text-slate-400">
-                      <Calendar className="w-5 h-5" />
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Category */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-black text-gray-600">تصنيف الفئة</label>
+                    <select 
+                      required
+                      value={formData.category} 
+                      onChange={(e) => setFormData({...formData, category: e.target.value})} 
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-100 font-bold"
+                    >
+                      {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Date */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-black text-gray-600">تاريخ العملية</label>
                     <input 
                       required 
                       type="date" 
                       value={formData.date} 
                       onChange={(e) => setFormData({...formData, date: e.target.value})} 
-                      className="w-full bg-white border border-slate-100 rounded-3xl pr-[4.5rem] pl-6 py-5 outline-none focus:ring-4 focus:ring-slate-100/50 font-black transition-all shadow-sm text-slate-700" 
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-100 font-bold text-left" 
                     />
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-400 mb-2 px-4 uppercase tracking-widest">تفاصيل ووصف المصروفات</label>
-                  <div className="relative group">
-                    <div className="absolute right-6 top-6 bg-slate-100 p-2 rounded-xl text-slate-400">
-                      <FileText className="w-5 h-5" />
-                    </div>
+                  {/* Description */}
+                  <div className="col-span-1 md:col-span-2 space-y-1.5">
+                    <label className="block text-xs font-black text-gray-600">البيان والغرض من الصرف</label>
                     <textarea 
                       required 
                       value={formData.description} 
                       onChange={(e) => setFormData({...formData, description: e.target.value})} 
-                      className="w-full bg-white border border-slate-100 rounded-[2.5rem] pr-[4.5rem] pl-8 py-6 outline-none focus:ring-4 focus:ring-slate-100/50 font-bold min-h-[140px] transition-all shadow-sm text-slate-700 text-lg leading-relaxed" 
-                      placeholder="اكتب ماذا تم صرفه والى أي جهة معينة..."
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-100 font-bold min-h-[80px] resize-none" 
+                      placeholder="اكتب وصفاً للعملية..."
                     />
                   </div>
                 </div>
-                
-                <button 
-                  type="submit" 
-                  className="w-full bg-red-600 text-white py-7 rounded-[2.2rem] font-black text-xl hover:bg-red-700 shadow-2xl shadow-red-100 transition-all active:scale-[0.98] flex items-center justify-center gap-3 group"
-                >
-                  <div className="p-2 bg-white/20 rounded-xl group-hover:rotate-12 transition-transform">
-                    {editingExpense ? <RefreshCw className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                  </div>
-                  {editingExpense ? 'تحديث بيانات الصرف' : 'تأكيد وإضافة المصروفات'}
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {/* Category Manager Modal */}
-      <AnimatePresence>
+                <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-100">
+                  <button 
+                    type="button"
+                    onClick={resetForm}
+                    className="px-6 py-3 bg-gray-100 text-gray-600 rounded-xl font-black text-sm hover:bg-gray-200 transition-all"
+                  >
+                    إلغاء
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      handleSubmit(e);
+                      setIsAdding(true);
+                    }}
+                    className="px-6 py-3 bg-red-50 text-red-600 rounded-xl font-black text-sm hover:bg-red-100 transition-all"
+                  >
+                    حفظ وإضافة جديد
+                  </button>
+                  <button 
+                    type="submit"
+                    className="px-8 py-3 bg-red-600 text-white rounded-xl font-black text-sm hover:bg-red-700 shadow-lg shadow-red-200 transition-all flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-5 h-5" />
+                    {editingExpense ? 'تحديث البيانات' : 'حفظ وإنهاء'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      
+
+      
         {showCategoryManager && (
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowCategoryManager(false)}
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-lg rounded-[3.5rem] shadow-2xl overflow-hidden relative z-10 border border-white/20"
-            >
-              <div className="p-10 border-b border-slate-100 flex items-center justify-between bg-white">
-                <div className="flex items-center gap-4">
-                   <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[1.5rem] shadow-sm">
-                      <Settings2 className="w-8 h-8" />
-                   </div>
-                   <div>
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">إدارة التصنيفات</h3>
-                    <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-[0.2em] leading-none">Category Management</p>
-                   </div>
+          <div className="integrated-page">
+            <div className="modal-content">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white relative z-20 sticky top-0 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-800 shadow-sm flex items-center justify-center">
+                    <Settings2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight text-slate-900 tracking-tight">إدارة وتبويب التصنيفات</h3>
+                    <p className="text-xs font-bold text-slate-500 mt-2">تنظيم فئات المصروفات للتقارير الدقيقة</p>
+                  </div>
                 </div>
                 <button 
                   onClick={() => setShowCategoryManager(false)} 
-                  className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-300"
+                  className="bg-slate-50 p-4 hover:bg-slate-100 border border-slate-100 rounded-2xl transition-all text-slate-600 hover:text-slate-900 active:scale-95 transition-all text-slate-400 hover:text-rose-600"
                 >
-                  <X className="w-7 h-7" />
+                  <X className="w-6 h-6" />
                 </button>
               </div>
               
-              <div className="p-10 space-y-8 bg-slate-50/30">
-                <div className="flex gap-3">
-                  <div className="relative flex-1">
-                    <Tag className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="أدخل اسم التصنيف الجديد..."
-                      className="w-full bg-white border border-slate-100 rounded-[1.5rem] pr-12 pl-6 py-4 outline-none focus:ring-4 focus:ring-indigo-100/50 font-black text-slate-700 transition-all shadow-sm"
-                    />
-                  </div>
-                  <button
-                    onClick={addCategory}
-                    className="bg-indigo-600 text-white px-8 py-4 rounded-[1.5rem] font-black hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
-                  >
-                    إضافة
-                  </button>
-                </div>
-
-                <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-3 custom-scrollbar">
-                  <div className="flex items-center justify-between px-2">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">التصنيفات الحالية في النظام</p>
-                    <span className="w-10 h-0.5 bg-slate-100 rounded-full"></span>
+              <div className="flex-1 overflow-y-auto custom-scrollbar w-full p-5 lg:p-4 bg-slate-50/20">
+                <div className="max-w-5xl mx-auto w-full /space-y-2">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                    <h4 className="text-lg font-black text-slate-900 mb-6 text-right px-4">إضافة تصنيف جديد</h4>
+                    <div className="flex flex-col md:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <Tag className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 w-6 h-6 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          placeholder="أدخل اسم التصنيف الجديد هنا..."
+                          className="w-full bg-slate-50 border border-slate-100 rounded-3xl pr-12 pl-6 py-2 text-lg outline-none focus:ring-2 focus:ring-indigo-100/50 font-black text-xl text-slate-700 transition-all shadow-inner text-right"
+                        />
+                      </div>
+                      <button
+                        onClick={addCategory}
+                        className="bg-indigo-600 text-white px-12 py-6 rounded-3xl font-black text-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95"
+                      >
+                        إضافة للتصنيفات
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3">
-                    {DEFAULT_CATEGORIES.map(c => (
-                      <div key={c} className="flex items-center justify-between p-5 bg-white border border-slate-50 rounded-[1.8rem] shadow-sm group">
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full bg-slate-200"></div>
-                          <span className="font-black text-slate-500">{c}</span>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-8">
+                       <span className="h-0.5 flex-1 bg-slate-200 rounded-full"></span>
+                       <p className="px-6 text-xs font-black text-slate-400 uppercase tracking-widest">قائمة التصنيفات الحالية في النظام</p>
+                       <span className="h-0.5 flex-1 bg-slate-200 rounded-full"></span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {DEFAULT_CATEGORIES.map(c => (
+                        <div key={c} className="flex items-center justify-between p-4 bg-white border border-slate-50 rounded-2xl shadow-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-slate-200"></div>
+                            <span className="font-black text-slate-500 text-lg">{c}</span>
+                          </div>
+                          <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-4 py-1.5 rounded-full border border-slate-100/50 italic">تصنيف افتراضي</span>
                         </div>
-                        <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100/50 italic">افتراضي</span>
-                      </div>
-                    ))}
-                    
-                    {categories.map(c => (
-                      <div key={c.id} className="flex items-center justify-between p-5 bg-white border border-indigo-100/30 rounded-[1.8rem] group transition-all hover:bg-indigo-50/30 shadow-sm">
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full bg-indigo-400 group-hover:scale-125 transition-transform"></div>
-                          <span className="font-black text-slate-900">{c.name}</span>
+                      ))}
+                      
+                      {categories.map(c => (
+                        <div key={c.id} className="flex items-center justify-between p-4 bg-white border border-indigo-100/30 rounded-2xl group transition-all hover:bg-indigo-50 shadow-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-indigo-400 group-hover:scale-150 transition-transform"></div>
+                            <span className="font-black text-slate-900 text-lg">{c.name}</span>
+                          </div>
+                          <button
+                            onClick={() => deleteCategory(c)}
+                            className="p-4 text-rose-300 hover:text-rose-600 hover:bg-rose-50 rounded-2xl transition-all"
+                          >
+                            <Trash2 className="w-6 h-6" />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => deleteCategory(c.id)}
-                          className="p-3 text-rose-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
+      
 
       {/* Preview Modal */}
-      <AnimatePresence>
+      
         {isPreviewing && (
-          <div className="fixed inset-0 z-[180] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsPreviewing(false)}
-              className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 30 }}
-              className="bg-white w-full max-w-5xl h-[92vh] rounded-[3.5rem] shadow-2xl relative z-10 flex flex-col overflow-hidden border border-white/20"
-            >
-              <div className="p-10 border-b border-slate-100 flex items-center justify-between bg-white relative z-20">
-                <div className="flex items-center gap-5">
-                  <div className="bg-blue-50 p-5 rounded-[1.8rem] text-blue-600 shadow-lg shadow-blue-50/50">
-                    <Printer className="w-8 h-8" />
+          <div className="integrated-page">
+            <div className="modal-content">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white relative z-20 sticky top-0 shadow-sm overflow-hidden">
+                <div className="flex items-center gap-3">
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-800 shadow-sm">
+                    <Printer className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-3xl font-black text-slate-900 tracking-tight">معاينة تقرير المصروفات</h3>
-                    <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest leading-none">Expense Report Preview</p>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight text-slate-900 tracking-tight">معاينة تقرير المصروفات المالي</h3>
+                    <p className="text-xs font-bold text-slate-500 mt-2">مراجعة البيانات قبل الاستخراج النهائي للطباعة</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   <button 
                     onClick={() => handlePrint()}
-                    className="bg-blue-600 text-white px-10 py-5 rounded-[1.8rem] font-black text-lg hover:bg-blue-700 flex items-center gap-3 transition-all shadow-2xl shadow-blue-200 active:scale-95 transform translate-y-0 hover:-translate-y-1"
+                    className="bg-blue-600 text-white px-12 py-6 rounded-2xl font-black text-xl hover:bg-blue-700 flex items-center gap-2 transition-all shadow-2xl shadow-blue-200 active:scale-95"
                   >
-                    <div className="p-1.5 bg-white/20 rounded-lg">
-                      <Printer className="w-5 h-5" />
-                    </div>
-                    إرسال للطباعة
+                    <Printer className="w-6 h-6" />
+                    إرسال للطباعة الآن
                   </button>
                   <button 
                     onClick={() => setIsPreviewing(false)} 
-                    className="p-5 hover:bg-slate-100 rounded-[1.8rem] text-slate-300 transition-all grow-0 shrink-0 border border-slate-50"
+                    className="bg-slate-50 p-4 hover:bg-slate-100 border border-slate-100 rounded-2xl transition-all text-slate-600 hover:text-slate-900 active:scale-95 transition-all text-slate-400 hover:text-rose-600 border border-slate-100"
                   >
-                    <X className="w-7 h-7" />
+                    <X className="w-6 h-6" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-8 px-12 py-4 bg-gray-50 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="expToggleAccountant" 
-                    checked={stampConfig.showAccountant} 
-                    onChange={(e) => setStampConfig({...stampConfig, showAccountant: e.target.checked})}
-                    className="w-5 h-5 accent-blue-600 rounded-lg cursor-pointer"
-                  />
-                  <label htmlFor="expToggleAccountant" className="text-xs font-black text-gray-700 cursor-pointer">توقيع المحاسب</label>
+              <div className="flex items-center gap-3 px-20 py-6 bg-slate-50/80 backdrop-blur-sm border-b border-slate-100 sticky top-[137px] z-20">
+                <div className="flex items-center gap-2 group cursor-pointer">
+                  <div className="relative">
+                    <input 
+                      type="checkbox" 
+                      id="expToggleAccountant" 
+                      checked={stampConfig.showAccountant} 
+                      onChange={(e) => setStampConfig({...stampConfig, showAccountant: e.target.checked})}
+                      className="w-6 h-6 accent-blue-600 rounded-xl cursor-pointer"
+                    />
+                  </div>
+                  <label htmlFor="expToggleAccountant" className="text-lg font-black text-slate-700 cursor-pointer group-hover:text-blue-600 transition-colors">إظهار حقل توقيع المحاسب</label>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="expTogglePrincipal" 
-                    checked={stampConfig.showPrincipal} 
-                    onChange={(e) => setStampConfig({...stampConfig, showPrincipal: e.target.checked})}
-                    className="w-5 h-5 accent-blue-600 rounded-lg cursor-pointer"
-                  />
-                  <label htmlFor="expTogglePrincipal" className="text-xs font-black text-gray-700 cursor-pointer">توقيع المدير</label>
+                <div className="flex items-center gap-2 group cursor-pointer">
+                  <div className="relative">
+                    <input 
+                      type="checkbox" 
+                      id="expTogglePrincipal" 
+                      checked={stampConfig.showPrincipal} 
+                      onChange={(e) => setStampConfig({...stampConfig, showPrincipal: e.target.checked})}
+                      className="w-6 h-6 accent-blue-600 rounded-xl cursor-pointer"
+                    />
+                  </div>
+                  <label htmlFor="expTogglePrincipal" className="text-lg font-black text-slate-700 cursor-pointer group-hover:text-blue-600 transition-colors">إظهار حقل توقيع مدير المدرسة</label>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-12 bg-gray-100 flex justify-center custom-scrollbar">
-                <div className="bg-white shadow-xl p-12 w-full max-w-4xl h-fit">
+              <div className="flex-1 overflow-y-auto p-5 lg:p-4 bg-slate-900/5 flex justify-center custom-scrollbar">
+                <div className="bg-white shadow-2xl p-16 w-full max-w-5xl h-fit rounded-[1rem] border border-slate-100">
                   <ExpensesReportBody 
                     school={school}
                     groupedExpenses={groupedExpenses}
@@ -926,10 +897,10 @@ export default function ExpensesManager({ school, expenses, categories, canModif
                   />
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
+      
 
       {/* Printable Report (Hidden) */}
       <div className="hidden">
@@ -942,8 +913,42 @@ export default function ExpensesManager({ school, expenses, categories, canModif
           />
         </div>
       </div>
+      
+      {deletingItem && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 text-center space-y-6">
+              <div className="w-24 h-24 bg-rose-50 rounded-full mx-auto flex items-center justify-center text-rose-500 mb-6">
+                <Trash2 className="w-12 h-12" />
+              </div>
+              <h3 className="text-3xl font-black text-slate-900 tracking-tight">تأكيد الحذف</h3>
+              <p className="text-lg text-slate-500 font-bold leading-relaxed">
+                هل أنت متأكد من حذف <span className="text-rose-600">"{deletingItem.title}"</span>؟
+                <br />
+                <span className="text-sm font-medium">لا يمكن التراجع عن هذا الإجراء بعد تنفيذه.</span>
+              </p>
+              
+              <div className="flex flex-col gap-3 pt-4">
+                <button 
+                  onClick={executeDelete}
+                  className="w-full bg-rose-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-rose-200 hover:bg-rose-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-6 h-6" />
+                  نعم، تأكيد الحذف
+                </button>
+                <button 
+                  onClick={() => setDeletingItem(null)}
+                  className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-lg hover:bg-slate-200 active:scale-95 transition-all"
+                >
+                  إلغاء الأمر
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+    );
 }
 
 interface ExpensesReportBodyProps {
@@ -958,10 +963,15 @@ interface ExpensesReportBodyProps {
 
 function ExpensesReportBody({ school, groupedExpenses, filteredExpenses, stampConfig }: ExpensesReportBodyProps) {
   return (
-    <div className="p-12 text-right rtl" dir="rtl">
-      <div className="text-center mb-12 border-b-2 border-gray-900 pb-8">
+    <div className="p-4 text-right rtl" dir="rtl">
+      <div className="text-center mb-12 border-b-2 border-gray-900 pb-4">
+        {school.logo && (
+          <div className="flex justify-center mb-4">
+            <img src={school.logo} alt="شعار المدرسة" className="h-24 object-contain" />
+          </div>
+        )}
         <h2 className="text-4xl font-black text-gray-900 mb-2">{school.name}</h2>
-        <h3 className="text-2xl font-black text-gray-600">تقرير المصروفات العامة التفصيلي</h3>
+        <h3 className="text-lg font-black text-gray-600">تقرير المصروفات العامة التفصيلي</h3>
         <p className="text-gray-500 font-bold mt-2">تاريخ التقرير: {format(new Date(), 'yyyy-MM-dd')}</p>
       </div>
 
@@ -994,17 +1004,17 @@ function ExpensesReportBody({ school, groupedExpenses, filteredExpenses, stampCo
               </tbody>
             </table>
           </div>
-        );
+    );
       })}
 
       <div className="mt-12 pt-8 border-t-2 border-gray-900 flex justify-between items-center">
-        <span className="text-2xl font-black text-gray-900">إجمالي المصروفات الكلي:</span>
-        <span className="text-3xl font-black text-red-600">
+        <span className="text-lg font-black text-gray-900">إجمالي المصروفات الكلي:</span>
+        <span className="text-lg font-black text-slate-900 tracking-tight text-red-600">
           {formatCurrency(filteredExpenses.reduce((sum, e) => sum + e.amount, 0))}
         </span>
       </div>
 
-      <div className="mt-24 flex justify-between gap-12 text-center">
+      <div className="mt-24 flex justify-between gap-3 text-center">
         {stampConfig.showPrincipal && (
           <div>
             <div className="w-48 border-b-2 border-gray-900 mb-2 mx-auto"></div>

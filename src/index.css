@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&family=Tajawal:wght@200;300;400;500;700;800;900&family=Almarai:wght@300;400;700;800&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@200..1000&family=Tajawal:wght@200;300;400;500;700;800;900&family=Almarai:wght@300;400;700;800&family=Changa:wght@200..800&family=Readex+Pro:wght@160..700&family=Inter:wght@100..900&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -9,9 +9,65 @@
   --font-amiri: "Amiri", serif;
 }
 
+html {
+  font-size: 18px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: #f9fafb;
+  font-size: var(--system-font-size, 200%);
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  color: #111827;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.02em !important;
+  color: #000;
+}
+
+/* Targeting numbers for maximum clarity and impact */
+span, div, td, p, li, button, input, select {
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4 !important;
+}
+
+/* Extra bold for all numbers */
+.font-black, .font-bold {
+  font-weight: 800 !important;
+}
+
+/* Force specific clarity for sub-elements and lists */
+.text-xs, .text-sm {
+  font-size: 0.95em !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+  color: inherit !important;
+}
+
+td, th {
+  padding: 0.5rem 0.75rem !important;
+  font-size: 0.95em !important;
+}
+
+label {
+  font-size: 0.9em !important;
+  font-weight: 800 !important;
+  color: #475569 !important;
+  margin-bottom: 0.25rem !important;
+  display: block;
+}
+
+/* Removed duplicate html tag */
+
+* {
+  font-weight: inherit;
 }
 
 @utility icon-glow {
@@ -19,18 +75,79 @@ body {
 }
 
 @utility custom-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+  
   &::-webkit-scrollbar {
-    width: 6px;
+    width: 10px;
+    height: 10px;
   }
+  
   &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: #e2e8f0;
+    background: rgba(200, 200, 200, 0.2);
     border-radius: 10px;
   }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.8);
+    border-radius: 10px;
+    border: 2px solid rgba(200, 200, 200, 0.2);
+  }
+
   &::-webkit-scrollbar-thumb:hover {
-    background: #cbd5e1;
+    background-color: rgba(100, 116, 139, 1);
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility integrated-page {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  background-color: #f9fafb;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0;
+  overflow: hidden;
+  animation: fade-in 0.2s ease-out;
+}
+
+@utility modal-content {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  background-color: #f9fafb;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  animation: modal-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-enter {
+  from { 
+    opacity: 0; 
+    transform: scale(0.9) translateY(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1) translateY(0); 
   }
 }
 
@@ -47,6 +164,26 @@ body {
 @media print {
   .no-print {
     display: none !important;
+  }
+  @page {
+    size: A4;
+    margin: 5mm;
+  }
+  .integrated-page {
+    position: relative !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    display: block !important;
+    z-index: auto !important;
+  }
+  .modal-content {
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: block !important;
+    background: none !important;
   }
 }
 

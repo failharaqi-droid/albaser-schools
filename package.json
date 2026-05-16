@@ -5,8 +5,9 @@
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
@@ -25,23 +26,37 @@
       "package.json"
     ],
     "win": {
-      "target": "portable"
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "نظام المحاسبة المدرسي",
+      "installerIcon": "build/icon.png",
+      "uninstallerIcon": "build/icon.png"
     }
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/cors": "^2.8.19",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
+    "cors": "^2.8.6",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
+    "esbuild": "^0.28.0",
     "express": "^4.21.2",
     "firebase": "^12.11.0",
     "html5-qrcode": "^2.3.8",
+    "idb-keyval": "^6.2.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.38.0",
+    "mysql2": "^3.22.3",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-barcode": "^1.6.1",
